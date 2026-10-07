@@ -10,7 +10,7 @@ import * as THREE from 'three';
 
 const START_HEIGHT = 600; // above the corridor floor
 const LOGO_CENTER = new THREE.Vector3(0, 0, -2.8); // middle of the M/T, in three.js coords
-const LOGO_HALF_SIZE = { x: 4.2, y: 4.6 }; // half the area to frame from above
+const LOGO_HALF_SIZE = { x: 7, y: 8.5 }; // half the area to frame from above
 const DROP_TIME = 3.2;
 const TILT_TIME = 1.4;
 const THROB_SPEED = 1.5; // matches UIButtonThrob in the Unity project
