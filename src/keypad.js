@@ -2,11 +2,12 @@ import * as THREE from 'three';
 
 // Keypad-locked doors in the starting area.
 // Walk up to a keypad and the camera leaves the player to frame it and frees the cursor.
-// Hovering a key lights its label; clicking pushes it in and lights the next of the four
+// Hovering a key lights it; clicking pushes it in and lights the next of the four
 // indicator lights green. Four digits are checked: wrong flashes red and fades, right
 // returns the camera to the player, recaptures the mouse and opens the door (back, then
-// sideways into the wall). The X key walks away, < clears. The keys carry no printed
-// numbers; which is which comes from the Blender names (0Butt..9Butt, XButt, <Butt).
+// sideways into the wall). It closes again once you're nearer the other door.
+// The X key walks away, < clears. The keys carry no printed numbers; which is which
+// comes from the Blender names (0Butt..9Butt, XButt, <Butt).
 //
 // The blend has one keypad (object "Keypad", on "DoorLeft"); the right door gets a copy.
 
@@ -75,9 +76,18 @@ class Door {
     }
   }
 
+  // The opening in reverse (slide out, then forward), without the wait.
+  close() {
+    if (this.state === 'open') {
+      this.state = 'closing';
+      this.time = DOOR_WAIT + DOOR_BACK_TIME + DOOR_SLIDE_TIME;
+    }
+  }
+
   update(dt) {
-    if (this.state !== 'opening') return;
-    this.time += dt;
+    if (this.state === 'opening') this.time += dt;
+    else if (this.state === 'closing') this.time = Math.max(DOOR_WAIT, this.time - dt);
+    else return;
     const back = smooth(THREE.MathUtils.clamp((this.time - DOOR_WAIT) / DOOR_BACK_TIME, 0, 1));
     const slide = smooth(THREE.MathUtils.clamp((this.time - DOOR_WAIT - DOOR_BACK_TIME) / DOOR_SLIDE_TIME, 0, 1));
     this.offset
@@ -86,7 +96,8 @@ class Door {
       .addScaledVector(this.left, slide * (this.width + 0.1));
     this.mesh.position.copy(this.closed).add(this.offset);
     this.box.copy(this.baseBox).translate(this.offset);
-    if (slide === 1) this.state = 'open';
+    if (this.state === 'opening' && slide === 1) this.state = 'open';
+    if (this.state === 'closing' && back === 0) this.state = 'closed';
   }
 }
 
@@ -315,9 +326,22 @@ export class KeypadSystem {
     };
   }
 
+  // An open door shuts by itself once the player is more than halfway to the other door.
+  closeDoorsBehind() {
+    if (this.doors.length < 2) return;
+    const p = this.player.position;
+    for (const d of this.doors) {
+      if (d.state !== 'open') continue;
+      const here = d.baseBox.getCenter(_v).setY(p.y).distanceTo(p);
+      const nearest = Math.min(...this.doors.filter((o) => o !== d).map((o) => o.baseBox.getCenter(new THREE.Vector3()).setY(p.y).distanceTo(p)));
+      if (here > nearest) d.close();
+    }
+  }
+
   // Returns true while it is driving the camera.
   update(dt) {
     for (const d of this.doors) d.update(dt);
+    this.closeDoorsBehind();
     for (const p of this.keypads) p.update(dt);
 
     if (this.state === 'idle') {
