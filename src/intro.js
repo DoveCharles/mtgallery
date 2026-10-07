@@ -48,12 +48,12 @@ export class Intro {
     dom.addEventListener('click', (e) => {
       if (this.state !== 'title' || !this.hitsButton(e)) return;
       dom.style.cursor = '';
+      this.button.removeFromParent();
       this.state = 'drop';
       this.time = 0;
       this.onPress?.();
     });
 
-    this.buttonTop = new THREE.Box3().setFromObject(button).max.y + 0.1;
     this.pose(0);
   }
 
@@ -96,10 +96,8 @@ export class Intro {
       this.button.material.color.setScalar(t);
       this.pose(0);
     } else if (this.state === 'drop') {
-      this.button.material.color.setScalar(0);
       const t = Math.min(this.time / DROP_TIME, 1);
       this.pose(smoother(t));
-      this.button.visible = this.camera.position.y > this.buttonTop;
       if (t === 1) {
         this.state = 'tilt';
         this.time = 0;

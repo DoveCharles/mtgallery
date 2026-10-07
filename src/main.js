@@ -64,26 +64,19 @@ async function start() {
       onDone: () => {
         intro = null;
         crosshair.hidden = false;
-        if (document.pointerLockElement !== renderer.domElement) showPause();
       },
     });
     crosshair.hidden = true;
-    overlay.classList.add('hidden');
   } else {
     scene.add(new THREE.HemisphereLight(0xffffff, 0x222226, 0.6));
-    showPause();
   }
+  overlay.classList.add('hidden');
 
-  function showPause() {
-    status.textContent = 'Click to enter';
-    overlay.classList.remove('hidden');
-  }
-
-  overlay.addEventListener('click', () => renderer.domElement.requestPointerLock());
-  document.addEventListener('pointerlockchange', () => {
-    if (intro) return;
-    if (document.pointerLockElement === renderer.domElement) overlay.classList.add('hidden');
-    else showPause();
+  // After the intro (or after Esc), clicking the scene captures the mouse again.
+  renderer.domElement.addEventListener('click', () => {
+    if (!intro && document.pointerLockElement !== renderer.domElement) {
+      renderer.domElement.requestPointerLock()?.catch?.(() => {});
+    }
   });
 
   addEventListener('resize', () => {
