@@ -1,0 +1,19 @@
+{
+  "name": "mark-truant",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "level:test": "\"${BLENDER:-/Applications/Blender 2.app/Contents/MacOS/Blender}\" -b --python tools/build_test_level.py"
+  },
+  "dependencies": {
+    "three": "^0.186.1",
+    "three-mesh-bvh": "^0.9.15"
+  },
+  "devDependencies": {
+    "vite": "^8.3.3"
+  }
+}
