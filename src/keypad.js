@@ -6,12 +6,14 @@ import * as THREE from 'three';
 // indicator lights green. Four digits are checked: wrong flashes red and fades, right
 // returns the camera to the player, recaptures the mouse and opens the door (back, then
 // sideways into the wall). It closes again once you're nearer the other door.
+// Doors don't lead anywhere themselves: each code names a room, and behind every door is
+// a portal plane (portalDefs) that onOpen(door, room) links to that room, whichever door
+// the code was typed on.
 // The X key walks away, < clears. The keys carry no printed numbers; which is which
 // comes from the Blender names (0Butt..9Butt, XButt, <Butt).
 //
 // The blend has one keypad (object "Keypad", on "DoorLeft"); the right door gets a copy.
 
-const CODE = '5555';
 const APPROACH_DISTANCE = 1.4; // from the keypad, along the floor
 const REARM_DISTANCE = 2.2; // walk this far away before it can catch you again
 const FILL = 0.6; // how much of the screen the keypad takes up
@@ -22,6 +24,8 @@ const FEEDBACK_TIME = 1.5; // red/green fade, as in the Unity KeypadController
 const DOOR_WAIT = 0.5;
 const DOOR_BACK_TIME = 1;
 const DOOR_SLIDE_TIME = 1;
+const PORTAL_GAP = 0.03; // behind the opened door's back face
+const PORTAL_OVERLAP = 0.2; // beyond the doorway on each side, so no edge shows at an angle
 
 const IDLE = new THREE.Color(0x0a0a0a);
 const GREEN = new THREE.Color(0x00ff55);
@@ -67,6 +71,13 @@ class Door {
     this.time = 0;
     this.offset = new THREE.Vector3();
     mesh.attach(keypadRoot); // the keypad rides along with the door
+
+    // The portal: a plane facing the corridor, just behind where the door moves back to.
+    const height = size.y;
+    this.portalMesh = new THREE.Mesh(new THREE.PlaneGeometry(this.width + PORTAL_OVERLAP * 2, height + PORTAL_OVERLAP * 2));
+    this.portalMesh.position.copy(doorCenter).addScaledVector(this.normal, -(this.thickness * 1.5 + 0.02 + PORTAL_GAP));
+    this.portalMesh.lookAt(_v.copy(this.portalMesh.position).add(this.normal));
+    this.portalMesh.updateMatrixWorld();
   }
 
   open() {
@@ -247,8 +258,8 @@ class Keypad {
     for (const [k, e] of this.keys) e.emis?.material.color.setScalar(k === key ? 1 : 0);
   }
 
-  // Returns 'correct', 'wrong' or null.
-  press(key) {
+  // Returns the room for a correct code, 'wrong', or null while still typing.
+  press(key, codes) {
     const e = this.keys.get(key);
     if (e) e.press = PRESS_TIME;
     if (this.locked) return null;
@@ -257,11 +268,11 @@ class Keypad {
     this.showEntered();
 
     if (this.entered.length < 4) return null;
-    const ok = this.entered === CODE;
+    const room = codes[this.entered];
     this.entered = '';
     this.locked = true;
-    this.feedback = { color: ok ? GREEN : RED, time: 0 };
-    return ok ? 'correct' : 'wrong';
+    this.feedback = { color: room ? GREEN : RED, time: 0 };
+    return room ?? 'wrong';
   }
 
   showEntered() {
@@ -302,7 +313,10 @@ export class KeypadSystem {
   active = null;
   time = 0;
 
-  constructor({ root, camera, dom, player, envMap, onEnter, onLeave }) {
+  // codes: { '5555': room, ... }; onOpen(door, room) when one is entered.
+  constructor({ root, camera, dom, player, envMap, codes, onOpen, onEnter, onLeave }) {
+    this.codes = codes;
+    this.onOpen = onOpen;
     this.onEnter = onEnter;
     this.onLeave = onLeave;
     this.camera = camera;
@@ -375,12 +389,19 @@ export class KeypadSystem {
       this.active.setHover(key);
       if (!key) return;
       if (key === 'X') return this.leave();
-      const result = this.active.press(key);
-      if (result === 'correct') {
-        this.active.door.open();
+      const result = this.active.press(key, this.codes);
+      if (result && result !== 'wrong') {
+        const door = this.active.door;
+        this.onOpen?.(door, result);
+        door.open();
         this.leave();
       }
     });
+  }
+
+  // One portal plane per door (see Door), for the PortalSystem.
+  get portalDefs() {
+    return this.doors.map((d, i) => ({ id: `door${i}`, link: null, world: 'start', mesh: d.portalMesh }));
   }
 
   get busy() {
@@ -446,14 +467,15 @@ export class KeypadSystem {
     }
   }
 
-  // Returns true while it is driving the camera.
-  update(dt) {
+  // Returns true while it is driving the camera. `present` is false while the player is
+  // off in a room: doors stay as they are and keypads don't catch them.
+  update(dt, present = true) {
     for (const d of this.doors) d.update(dt);
-    this.closeDoorsBehind();
+    if (present) this.closeDoorsBehind();
     for (const p of this.keypads) p.update(dt);
 
     if (this.state === 'idle') {
-      if (!this.player.enabled) return false;
+      if (!this.player.enabled || !present) return false;
       for (const pad of this.keypads) {
         const d = pad.standPoint(_v).setY(this.player.position.y).distanceTo(this.player.position);
         if (!pad.armed) pad.armed = d > REARM_DISTANCE;

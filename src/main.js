@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { loadLevel } from './level.js';
+import { loadLevel, buildCollider } from './level.js';
 import { Player } from './player.js';
 import { PortalSystem } from './portals.js';
 import { Intro, dressStartArea } from './intro.js';
@@ -24,6 +24,13 @@ renderer.toneMapping = THREE.NeutralToneMapping;
 document.body.prepend(renderer.domElement);
 
 const FLOOR_FADE = 2.5; // seconds
+const SKY_LIGHT = 0.08; // the Sky shader is very bright HDR
+
+// Keypad codes and the rooms they open (public/levels/<room>.glb, entered through its
+// "Entrance" portal). Rooms share the scene with the starting area, each moved out of
+// the way, and are lit by their own lights only (see setWorld).
+const ROOMS = { 5555: 'test' };
+const ROOM_SPACING = new THREE.Vector3(1000, -40, 0);
 
 softShadows();
 
@@ -50,8 +57,9 @@ function addSkyAndSun(levelRoot) {
   const skyScene = new THREE.Scene();
   skyScene.add(sky);
   scene.environment = new THREE.PMREMGenerator(renderer).fromScene(skyScene, 0, 0.1, 2000).texture;
-  scene.environmentIntensity = 0.08; // the Sky shader is very bright HDR
-  scene.add(new THREE.HemisphereLight(0xf2f0ea, 0x9a9a9a, 0.9)); // a little bounce from the ground
+  scene.environmentIntensity = SKY_LIGHT;
+  const bounce = new THREE.HemisphereLight(0xf2f0ea, 0x9a9a9a, 0.9); // a little bounce from the ground
+  scene.add(bounce);
 
   // Fit the shadow camera to the level.
   renderer.shadowMap.enabled = true;
@@ -71,25 +79,51 @@ function addSkyAndSun(levelRoot) {
   levelRoot.traverse((o) => {
     if (o.isMesh) o.castShadow = o.receiveShadow = true;
   });
-  return sky;
+  return { sky, lights: [bounce, sun] };
 }
 
 async function start() {
+  const isStart = levelName === 'start';
   const level = await loadLevel(`/levels/${levelName}.glb`, scene, (e) => {
     if (e.total) status.textContent = `Loading… ${Math.round((e.loaded / e.total) * 100)}%`;
-  }, isMovingPart);
+  }, isMovingPart, isStart ? { world: 'start' } : {});
+  const roomNames = isStart ? [...new Set(Object.values(ROOMS))] : [];
+  const rooms = await Promise.all(
+    roomNames.map((name, i) =>
+      loadLevel(`/levels/${name}.glb`, scene, null, undefined, { world: name, offset: ROOM_SPACING.clone().multiplyScalar(i + 1) }),
+    ),
+  );
 
-  const player = new Player(camera, renderer.domElement, level.collider);
+  const player = new Player(camera, renderer.domElement, buildCollider([level, ...rooms]));
   if (level.spawn) player.spawnAt(level.spawn);
-  const portals = new PortalSystem(renderer, scene, level.portals);
 
   let intro = null;
   let keypads = null;
   let floor = null;
   let floorReveal = 0;
-  if (levelName === 'start') {
+  let setWorld;
+  if (isStart) {
     let button, logo;
-    ({ button, logo, floor } = dressStartArea(level.root, scene, addSkyAndSun(level.root)));
+    const outdoor = addSkyAndSun(level.root);
+    ({ button, logo, floor } = dressStartArea(level.root, scene, outdoor.sky));
+
+    // Each world keeps its own lights; the others' are switched off while it's drawn.
+    const worldLights = { start: outdoor.lights };
+    rooms.forEach((room, i) => {
+      const ambient = new THREE.HemisphereLight(0xffffff, 0x222226, 0.6);
+      scene.add(ambient);
+      worldLights[roomNames[i]] = [ambient];
+      room.root.traverse((o) => o.isLight && worldLights[roomNames[i]].push(o));
+    });
+    for (const l of Object.values(worldLights).flat()) l.userData.intensity = l.intensity;
+    setWorld = (world) => {
+      for (const [name, lights] of Object.entries(worldLights)) {
+        for (const l of lights) l.intensity = name === world ? l.userData.intensity : 0;
+      }
+      scene.environmentIntensity = world === 'start' ? SKY_LIGHT : 0;
+      outdoor.sky.visible = world === 'start';
+    };
+
     player.enabled = false;
     intro = new Intro({
       camera,
@@ -110,6 +144,8 @@ async function start() {
       dom: renderer.domElement,
       player,
       envMap: new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture,
+      codes: ROOMS,
+      onOpen: (door, room) => portals.connect(`door${keypads.doors.indexOf(door)}`, `${room}/Entrance`),
       onEnter: () => (crosshair.hidden = true),
       onLeave: () => (crosshair.hidden = false),
     });
@@ -117,6 +153,11 @@ async function start() {
   } else {
     scene.add(new THREE.HemisphereLight(0xffffff, 0x222226, 0.6));
   }
+  const portals = new PortalSystem(renderer, scene, [...level.portals, ...rooms.flatMap((r) => r.portals), ...(keypads?.portalDefs ?? [])], {
+    world: isStart ? 'start' : undefined,
+    setWorld,
+  });
+  const doorPortals = keypads?.doors.map((_, i) => portals.byId.get(`door${i}`)) ?? [];
   overlay.classList.add('hidden');
 
   // After the intro (or after Esc), clicking the scene captures the mouse again.
@@ -154,7 +195,9 @@ async function start() {
       floorReveal = Math.min(floorReveal + dt / FLOOR_FADE, 1);
       floor.setReveal(floorReveal);
     }
-    if (!keypads?.update(dt) && !cutscene) {
+    // A door's portal only needs drawing once the door has started to open.
+    keypads?.doors.forEach((d, i) => (doorPortals[i].active = d.state !== 'closed'));
+    if (!keypads?.update(dt, portals.world === 'start') && !cutscene) {
       portals.handleTraversal(player, prevEye, player.getEye(eye));
       player.updateCamera();
     }

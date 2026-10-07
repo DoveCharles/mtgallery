@@ -9,6 +9,8 @@ and public/levels/test.glb (what the game loads).
 Tagging conventions (object custom properties, exported as glTF extras):
   portal = "A", link = "B"   -> a flat, vertical plane becomes a portal to plane "B".
                                 The portal's front is the side its face normal points to.
+                                Without a link it waits for the game to link it (a room's
+                                "Entrance", linked to whichever door its code opened).
   recursion = 4              -> optional, max portal-in-portal depth (default 4).
   spawn = 1                  -> empty where the player starts, looking along its local +Y.
   nocollide = 1              -> mesh the player can walk through.
@@ -87,7 +89,8 @@ def portal(name, coll, mat, center, size, facing, link):
     bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
     o.data.materials.append(mat)
     o["portal"] = name
-    o["link"] = link
+    if link:
+        o["link"] = link
     move_to(o, coll)
     return o
 
@@ -122,7 +125,9 @@ g = collection("Gallery")
 box("Floor", g, (0, 0, -0.1), (16.6, 16.6, 0.2), gallery_floor)
 box("Ceiling", g, (0, 0, 4.6), (16.6, 16.6, 0.2), white_wall)
 wall("WallN", g, white_wall, "x", 8, -8.15, 8.15, 4.5)
-wall("WallS", g, white_wall, "x", -8, -8.15, 8.15, 4.5)
+# The entrance from the starting area: the same size as its doors (2.5 x 3.955).
+ENTRANCE = (2.5, 3.955)
+wall("WallS", g, white_wall, "x", -8, -8.15, 8.15, 4.5, door=(0, *ENTRANCE))
 wall("WallE", g, white_wall, "y", 8, -8, 8, 4.5, door=(0, 1.6, 2.6))
 wall("WallW", g, white_wall, "y", -8, -8, 8, 4.5, door=(0, 1.6, 2.6))
 for i, y in enumerate((-4, 0, 4)):
@@ -166,6 +171,7 @@ for i, y in enumerate((-9, 0, 9)):
 p = collection("Portals")
 portal("E", p, portal_mat, (8, 0, 1.3), (1.6, 2.6), "-x", "W")
 portal("W", p, portal_mat, (-8, 0, 1.3), (1.6, 2.6), "+x", "E")
+portal("Entrance", p, portal_mat, (0, -8, ENTRANCE[1] / 2), ENTRANCE, "+y", None)
 portal("BoxOutside", p, portal_mat, (0, -0.125, 1.15), (1.2, 2.3), "-y", "BoxInside")
 portal("BoxInside", p, portal_mat, (HX, -15, 1.15), (1.2, 2.3), "+y", "BoxOutside")
 

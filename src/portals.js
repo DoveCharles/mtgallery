@@ -47,9 +47,12 @@ const _normalMatrix = new THREE.Matrix3();
 const _box = new THREE.Box3();
 
 class Portal {
-  constructor({ id, link, recursion, mesh }) {
+  active = true; // false while hidden anyway (behind a closed door): skip rendering it
+
+  constructor({ id, link, world, recursion, mesh }) {
     this.id = id;
     this.linkId = link;
+    this.world = world;
     this.recursion = recursion ?? 4;
     this.linked = null;
 
@@ -156,16 +159,21 @@ function overlaps(a, b) {
   return a && b && a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY;
 }
 
+// Worlds: levels sharing the scene can each have their own lighting. Every portal knows
+// which world it is in; each view is rendered after `setWorld(name)` for the world its
+// camera is in, and walking through a portal moves the player into the exit's world.
 export class PortalSystem {
-  constructor(renderer, scene, defs) {
+  constructor(renderer, scene, defs, { world, setWorld } = {}) {
     this.renderer = renderer;
     this.portals = defs.map((d) => new Portal(d));
+    this.world = world;
+    this.setWorld = setWorld ?? (() => {});
 
-    const byId = new Map(this.portals.map((p) => [p.id, p]));
+    this.byId = new Map(this.portals.map((p) => [p.id, p]));
     for (const p of this.portals) {
-      const other = byId.get(p.linkId);
+      const other = this.byId.get(p.linkId);
       if (other) p.link(other);
-      else console.warn(`Portal "${p.id}" links to missing portal "${p.linkId}"`);
+      else if (p.linkId) console.warn(`Portal "${p.id}" links to missing portal "${p.linkId}"`);
       scene.add(p.frame);
     }
 
@@ -181,6 +189,14 @@ export class PortalSystem {
     this.setSize();
   }
 
+  // Joins two portals both ways (replacing whatever they were linked to).
+  connect(a, b) {
+    a = this.byId.get(a) ?? a;
+    b = this.byId.get(b) ?? b;
+    a.link(b);
+    b.link(a);
+  }
+
   setSize() {
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
     this.scratch.setSize(size.x, size.y);
@@ -193,7 +209,7 @@ export class PortalSystem {
   // Teleport the player if their eye crossed a portal from front to back this frame.
   handleTraversal(player, prevEye, eye) {
     for (const p of this.portals) {
-      if (!p.linked) continue;
+      if (!p.linked || !p.active) continue;
       const d0 = p.signedDistance(prevEye);
       const d1 = p.signedDistance(eye);
       if (d0 < 0 || d1 >= 0) continue;
@@ -203,6 +219,7 @@ export class PortalSystem {
       if (Math.abs(_v.x) > p.width / 2 || Math.abs(_v.y) > p.height / 2) continue;
 
       player.applyTransform(p.toLinked);
+      this.world = p.linked.world;
       return p;
     }
     return null;
@@ -216,12 +233,16 @@ export class PortalSystem {
     for (const p of this.portals) {
       p.protectFromNearClip(mainCamera);
       p.frame.updateMatrixWorld();
-      if (p.linked && p.signedDistance(mainCamera.position) > 0 && _frustum.intersectsObject(p.screen)) {
+      if (p.linked && p.active && p.signedDistance(mainCamera.position) > 0 && _frustum.intersectsObject(p.screen)) {
         visible.push(p);
       }
     }
 
-    for (const p of visible) this.renderPortal(p, scene, mainCamera);
+    for (const p of visible) {
+      this.setWorld(p.linked.world);
+      this.renderPortal(p, scene, mainCamera);
+    }
+    this.setWorld(this.world);
 
     // Main pass: only portals we are in front of show anything.
     for (const p of this.portals) {

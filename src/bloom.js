@@ -6,7 +6,7 @@ import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 // They are drawn into a half-size buffer over a black, depth-only copy of the scene (so
 // walls still hide them), blurred, and added on top of the finished frame. Nothing runs
 // while none of them is lit.
-const STRENGTH = 0.45;
+const STRENGTH = 0.25;
 const RADIUS = 0.2;
 const THRESHOLD = 0.1;
 const LAYER = 1;

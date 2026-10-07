@@ -14,11 +14,15 @@ function prop(obj, key) {
 
 // `moving(obj)` marks meshes that will move at runtime (doors), so they stay out of the
 // static collider; the code that moves them handles their collision itself.
-export async function loadLevel(url, scene, onProgress, moving = () => false) {
+// Several levels can share a scene: `offset` moves one out of the others' way, and
+// `world` names it, prefixing its portal ids ("test/E") and tagging its portals.
+export async function loadLevel(url, scene, onProgress, moving = () => false, { offset, world } = {}) {
   const gltf = await new GLTFLoader().loadAsync(url, onProgress);
   const root = gltf.scene;
+  if (offset) root.position.copy(offset);
   scene.add(root);
   root.updateMatrixWorld(true);
+  const id = (v) => (world ? `${world}/${v}` : String(v));
 
   const portals = [];
   const colliderParts = [];
@@ -30,8 +34,9 @@ export async function loadLevel(url, scene, onProgress, moving = () => false) {
 
     if (prop(o, 'portal') !== undefined) {
       portals.push({
-        id: String(prop(o, 'portal')),
-        link: String(prop(o, 'link')),
+        id: id(prop(o, 'portal')),
+        link: prop(o, 'link') ? id(prop(o, 'link')) : null, // unlinked until the game links it
+        world,
         recursion: prop(o, 'recursion'),
         mesh: o,
       });
@@ -47,8 +52,14 @@ export async function loadLevel(url, scene, onProgress, moving = () => false) {
   });
 
   // Portal planes are only markers; the portal system draws its own screens.
-  for (const p of portals) p.mesh.removeFromParent();
+  // (Detached with their world transform kept, so an offset level's portals stay put.)
+  for (const p of portals) {
+    scene.attach(p.mesh);
+    p.mesh.removeFromParent();
+  }
 
-  const collider = new MeshBVH(mergeGeometries(colliderParts));
-  return { root, collider, spawn, portals };
+  return { root, colliderGeometry: mergeGeometries(colliderParts), spawn, portals };
 }
+
+// One collider for all the levels in the scene.
+export const buildCollider = (levels) => new MeshBVH(mergeGeometries(levels.map((l) => l.colliderGeometry)));
