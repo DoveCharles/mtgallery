@@ -53,13 +53,14 @@ async function start() {
 
   let intro = null;
   if (levelName === 'start') {
-    const button = dressStartArea(level.root, scene, addSkyAndSun());
+    const { button, logo } = dressStartArea(level.root, scene, addSkyAndSun());
     player.enabled = false;
     intro = new Intro({
       camera,
       dom: renderer.domElement,
       player,
       button,
+      logo,
       onPress: () => renderer.domElement.requestPointerLock()?.catch?.(() => {}),
       onDone: () => {
         intro = null;

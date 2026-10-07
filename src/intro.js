@@ -8,9 +8,8 @@ import * as THREE from 'three';
 // near-orthographic view into ordinary perspective.
 // Tilt: the camera pitches up to look down the corridor, then the player takes over.
 
-const START_HEIGHT = 600; // above the corridor floor
-const LOGO_CENTER = new THREE.Vector3(0, 0, -2.8); // middle of the M/T, in three.js coords
-const LOGO_HALF_SIZE = { x: 7, y: 8.5 }; // half the area to frame from above
+const START_HEIGHT = 1500; // above the corridor floor
+const FRAME_MARGIN = 2.2; // how much bigger than the M/T the title view is
 const DROP_TIME = 3.2;
 const TILT_TIME = 1.4;
 const THROB_SPEED = 1.5; // matches UIButtonThrob in the Unity project
@@ -22,7 +21,7 @@ export class Intro {
   state = 'title';
   time = 0;
 
-  constructor({ camera, dom, player, button, onPress, onDone }) {
+  constructor({ camera, dom, player, button, logo, onPress, onDone }) {
     this.camera = camera;
     this.dom = dom;
     this.player = player;
@@ -32,6 +31,13 @@ export class Intro {
     this.playFov = camera.fov;
     this.playNear = camera.near;
     this.playFar = camera.far;
+
+    // Frame the M/T: its centre, and half its footprint (x across, z along the corridor).
+    const box = new THREE.Box3();
+    for (const o of logo) box.expandByObject(o);
+    this.logoCenter = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    this.logoHalf = { x: (size.x / 2) * FRAME_MARGIN, y: (size.z / 2) * FRAME_MARGIN };
 
     this.floorY = player.position.y;
     this.end = player.getEye(new THREE.Vector3());
@@ -66,7 +72,7 @@ export class Intro {
 
   // Lens half-height that frames the logo at distance h.
   framingHalfHeight() {
-    return Math.max(LOGO_HALF_SIZE.y, LOGO_HALF_SIZE.x / this.camera.aspect);
+    return Math.max(this.logoHalf.y, this.logoHalf.x / this.camera.aspect);
   }
 
   // Camera pose during the drop, u in 0..1.
@@ -81,7 +87,7 @@ export class Intro {
     cam.updateProjectionMatrix();
 
     // Slide over the button while still high, then drop straight down past it.
-    cam.position.lerpVectors(LOGO_CENTER, this.end, smooth(Math.min(u / 0.55, 1)));
+    cam.position.lerpVectors(this.logoCenter, this.end, smooth(Math.min(u / 0.55, 1)));
     cam.position.y = this.floorY + h;
     cam.rotation.set(-Math.PI / 2, this.player.yaw, 0, 'YXZ');
     cam.updateMatrixWorld();
@@ -123,12 +129,13 @@ export class Intro {
 }
 
 // Colours the starting area (by Blender object/material names, see tools/build_start.py)
-// and adds the white ground and the sky. Returns the button mesh.
+// and adds the white ground and the sky. Returns the button and the meshes forming the M/T.
 export function dressStartArea(root, scene, sky) {
   const white = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   const black = new THREE.MeshBasicMaterial({ color: 0x000000 });
   const wall = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
   let button = null;
+  const logo = [];
 
   root.traverse((o) => {
     if (!o.isMesh) return;
@@ -136,9 +143,14 @@ export function dressStartArea(root, scene, sky) {
     if (name === 'Button') {
       o.material = new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false, side: THREE.DoubleSide });
       button = o;
-    } else if (name === 'M') o.material = black;
-    else if (o.material.name === 'CeilingWhite') o.material = white;
-    else if (o.material.name === 'Material.002') o.material = black;
+    } else if (name === 'M') {
+      o.material = black;
+      logo.push(o);
+    } else if (o.material.name === 'CeilingWhite') o.material = white;
+    else if (o.material.name === 'Material.002') {
+      o.material = black;
+      logo.push(o);
+    }
     else if (o.material.name === 'concrete_layers_02') o.material = wall;
   });
 
@@ -148,5 +160,5 @@ export function dressStartArea(root, scene, sky) {
   scene.add(ground);
 
   scene.add(sky);
-  return button;
+  return { button, logo };
 }
