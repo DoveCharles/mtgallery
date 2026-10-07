@@ -163,11 +163,14 @@ function overlaps(a, b) {
 // which world it is in; each view is rendered after `setWorld(name)` for the world its
 // camera is in, and walking through a portal moves the player into the exit's world.
 export class PortalSystem {
-  constructor(renderer, scene, defs, { world, setWorld } = {}) {
+  // afterView(camera, target) runs after each portal view is drawn (for post effects).
+  constructor(renderer, scene, defs, { world, setWorld, afterView } = {}) {
     this.renderer = renderer;
     this.portals = defs.map((d) => new Portal(d));
     this.world = world;
     this.setWorld = setWorld ?? (() => {});
+    this.afterView = afterView ?? (() => {});
+    this.screens = this.portals.map((p) => p.screen);
 
     this.byId = new Map(this.portals.map((p) => [p.id, p]));
     for (const p of this.portals) {
@@ -287,6 +290,7 @@ export class PortalSystem {
       cam.updateMatrixWorld();
       renderer.setRenderTarget(target);
       renderer.render(scene, cam);
+      this.afterView(cam, target);
     }
 
     renderer.setRenderTarget(null);

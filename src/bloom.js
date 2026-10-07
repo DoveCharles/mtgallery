@@ -66,8 +66,9 @@ export class Bloom {
     });
   }
 
-  render() {
-    if (!this.lit()) return;
+  // force: draw even with nothing lit (to compile its shaders up front).
+  render(force = false) {
+    if (!force && !this.lit()) return;
     const { renderer, scene, camera } = this;
     const shadows = renderer.shadowMap.autoUpdate;
     const autoClear = renderer.autoClear;

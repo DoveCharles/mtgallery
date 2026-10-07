@@ -5,14 +5,19 @@ import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 // Screen-space ambient occlusion (GTAO), multiplied over the finished frame.
 // The scene still renders straight to the screen, so tone mapping and the
 // toneMapped: false whites (CeilingWhite, the ground) stay exactly as they were.
+// Portal views get the same treatment from their own camera (render(camera, target)).
+// Portal screens are hidden while it is worked out: they are pictures of somewhere else,
+// already shaded, and the doorway around them mustn't darken them.
 const RADIUS = 1.2; // world units
 const INTENSITY = 0.9;
 
 export class AmbientOcclusion {
   enabled = true;
+  hidden = []; // objects left out of the occlusion (portal screens)
 
   constructor(renderer, scene, camera) {
     this.renderer = renderer;
+    this.camera = camera;
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     this.pass = new GTAOPass(scene, camera, size.x, size.y, undefined, {
       radius: RADIUS,
@@ -32,18 +37,23 @@ export class AmbientOcclusion {
     this.pass.setSize(size.x, size.y);
   }
 
-  render() {
+  // Darkens what `camera` has just drawn into `target` (null: the screen).
+  render(camera = this.camera, target = null) {
     if (!this.enabled) return;
     const renderer = this.renderer;
     // The normal/depth pass would otherwise redraw the shadow maps.
     const shadows = renderer.shadowMap.autoUpdate;
     renderer.shadowMap.autoUpdate = false;
+    const shown = this.hidden.filter((o) => o.visible);
+    for (const o of shown) o.visible = false;
+    this.pass.camera = camera;
     this.pass.render(renderer, null, null);
+    for (const o of shown) o.visible = true;
     renderer.shadowMap.autoUpdate = shadows;
 
     const autoClear = renderer.autoClear;
     renderer.autoClear = false;
-    renderer.setRenderTarget(null);
+    renderer.setRenderTarget(target);
     this.quad.render(renderer);
     renderer.autoClear = autoClear;
   }

@@ -156,9 +156,9 @@ async function start() {
   const portals = new PortalSystem(renderer, scene, [...level.portals, ...rooms.flatMap((r) => r.portals), ...(keypads?.portalDefs ?? [])], {
     world: isStart ? 'start' : undefined,
     setWorld,
+    afterView: (cam, target) => ao.render(cam, target),
   });
   const doorPortals = keypads?.doors.map((_, i) => portals.byId.get(`door${i}`)) ?? [];
-  overlay.classList.add('hidden');
 
   // After the intro (or after Esc), clicking the scene captures the mouse again.
   renderer.domElement.addEventListener('click', () => {
@@ -178,8 +178,11 @@ async function start() {
   });
 
   const ao = new AmbientOcclusion(renderer, scene, camera);
+  ao.hidden = portals.screens;
   const bloom = new Bloom(renderer, scene, camera);
   if (keypads) bloom.add(keypads.glowMeshes);
+  await warmUp(portals, ao, bloom);
+  overlay.classList.add('hidden');
 
   const clock = new THREE.Clock();
   const prevEye = new THREE.Vector3();
@@ -209,6 +212,29 @@ async function start() {
   });
 
   if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, bloom, intro: () => intro, keypads: () => keypads };
+}
+
+// Compiles every shader and allocates every render target the game can need while still
+// loading, so nothing hitches the first time a door opens onto a portal or you walk into a
+// room. Portal views are clipped at the exit, a separate variant of every shader, and the
+// AO and bloom draw the scene with their own override materials.
+async function warmUp(portals, ao, bloom) {
+  const overrides = new THREE.Scene();
+  for (const m of [ao.pass.normalMaterial, bloom.black]) overrides.add(new THREE.Mesh(new THREE.BoxGeometry(), m));
+  const compiling = [];
+  for (const planes of [[], [new THREE.Plane()]]) {
+    renderer.clippingPlanes = planes;
+    compiling.push(renderer.compileAsync(scene, camera), renderer.compileAsync(overrides, camera, scene));
+  }
+  renderer.clippingPlanes = [];
+  await Promise.all(compiling);
+
+  for (const target of [portals.scratch, ...portals.portals.map((p) => p.target)]) {
+    renderer.setRenderTarget(target);
+    renderer.clear();
+  }
+  renderer.setRenderTarget(null);
+  bloom.render(true);
 }
 
 start().catch((err) => {
