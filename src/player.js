@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 const PHYSICS_STEPS = 5;
+const NO_KEYS = new Set();
 
 const _segment = new THREE.Line3();
 const _box = new THREE.Box3();
@@ -26,6 +27,7 @@ export class Player {
   yaw = 0;
   pitch = 0;
   onGround = false;
+  enabled = true; // false while a cutscene owns the camera
 
   constructor(camera, dom, collider) {
     this.camera = camera;
@@ -37,7 +39,7 @@ export class Player {
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
     addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement !== dom) return;
+      if (!this.enabled || document.pointerLockElement !== dom) return;
       this.yaw -= e.movementX * this.lookSpeed;
       this.pitch -= e.movementY * this.lookSpeed;
       this.pitch = THREE.MathUtils.clamp(this.pitch, -1.5, 1.5);
@@ -59,7 +61,7 @@ export class Player {
   }
 
   update(dt) {
-    const k = this.keys;
+    const k = this.enabled ? this.keys : NO_KEYS;
     const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
     const strafe = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
     const speed = k.has('ShiftLeft') || k.has('ShiftRight') ? this.runSpeed : this.walkSpeed;

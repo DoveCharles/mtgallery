@@ -32,6 +32,16 @@ example of all of the above:
 npm run level:test   # writes blender/test_level.blend and public/levels/test.glb
 ```
 
+The starting area lives in `blender/StartingArea.blend`. Edit that copy, then:
+
+```bash
+npm run level:start  # writes public/levels/start.glb
+```
+
+The intro finds things by name: objects `M` and `Button`, materials `CeilingWhite`
+(pure white, blends into the ground) and `Material.002` (black corridor floor).
+The prototype portal level is still at `/?level=test`.
+
 When exporting by hand, set **Lighting Mode → Non-Physical** so lights match Blender.
 
 ## Code
@@ -39,4 +49,5 @@ When exporting by hand, set **Lighting Mode → Non-Physical** so lights match B
 - `src/main.js`: renderer, loop, startup
 - `src/level.js`: loads a level and reads the Blender tags
 - `src/player.js`: first-person controller and collision (three-mesh-bvh)
+- `src/intro.js`: starting-area look and the opening camera drop
 - `src/portals.js`: portal rendering, recursion and teleporting
