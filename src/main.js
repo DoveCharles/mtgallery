@@ -4,6 +4,7 @@ import { loadLevel } from './level.js';
 import { Player } from './player.js';
 import { PortalSystem } from './portals.js';
 import { Intro, dressStartArea } from './intro.js';
+import { KeypadSystem, isMovingPart } from './keypad.js';
 
 const overlay = document.getElementById('overlay');
 const status = document.getElementById('status');
@@ -45,13 +46,14 @@ function addSkyAndSun() {
 async function start() {
   const level = await loadLevel(`/levels/${levelName}.glb`, scene, (e) => {
     if (e.total) status.textContent = `Loading… ${Math.round((e.loaded / e.total) * 100)}%`;
-  });
+  }, isMovingPart);
 
   const player = new Player(camera, renderer.domElement, level.collider);
   if (level.spawn) player.spawnAt(level.spawn);
   const portals = new PortalSystem(renderer, scene, level.portals);
 
   let intro = null;
+  let keypads = null;
   if (levelName === 'start') {
     const { button, logo } = dressStartArea(level.root, scene, addSkyAndSun());
     player.enabled = false;
@@ -68,6 +70,15 @@ async function start() {
       },
     });
     crosshair.hidden = true;
+    keypads = new KeypadSystem({
+      root: level.root,
+      camera,
+      dom: renderer.domElement,
+      player,
+      onEnter: () => (crosshair.hidden = true),
+      onLeave: () => (crosshair.hidden = false),
+    });
+    player.blockers = keypads.blockers;
   } else {
     scene.add(new THREE.HemisphereLight(0xffffff, 0x222226, 0.6));
   }
@@ -75,7 +86,7 @@ async function start() {
 
   // After the intro (or after Esc), clicking the scene captures the mouse again.
   renderer.domElement.addEventListener('click', () => {
-    if (!intro && document.pointerLockElement !== renderer.domElement) {
+    if (!intro && !keypads?.busy && document.pointerLockElement !== renderer.domElement) {
       renderer.domElement.requestPointerLock()?.catch?.(() => {});
     }
   });
@@ -96,7 +107,8 @@ async function start() {
     const dt = Math.min(clock.getDelta(), 0.1);
     player.getEye(prevEye);
     player.update(dt);
-    if (!intro?.update(dt)) {
+    const cutscene = intro?.update(dt);
+    if (!keypads?.update(dt) && !cutscene) {
       portals.handleTraversal(player, prevEye, player.getEye(eye));
       player.updateCamera();
     }
@@ -105,7 +117,7 @@ async function start() {
     renderer.render(scene, camera);
   });
 
-  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, intro: () => intro };
+  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, intro: () => intro, keypads: () => keypads };
 }
 
 start().catch((err) => {

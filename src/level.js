@@ -12,7 +12,9 @@ function prop(obj, key) {
   return undefined;
 }
 
-export async function loadLevel(url, scene, onProgress) {
+// `moving(obj)` marks meshes that will move at runtime (doors), so they stay out of the
+// static collider; the code that moves them handles their collision itself.
+export async function loadLevel(url, scene, onProgress, moving = () => false) {
   const gltf = await new GLTFLoader().loadAsync(url, onProgress);
   const root = gltf.scene;
   scene.add(root);
@@ -36,6 +38,7 @@ export async function loadLevel(url, scene, onProgress) {
       return;
     }
     if (prop(o, 'nocollide')) return;
+    for (let a = o; a; a = a.parent) if (moving(a)) return;
 
     const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
     const part = new THREE.BufferGeometry();

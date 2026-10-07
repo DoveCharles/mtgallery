@@ -28,6 +28,7 @@ export class Player {
   pitch = 0;
   onGround = false;
   enabled = true; // false while a cutscene owns the camera
+  blockers = []; // Box3s that move (doors), checked on top of the static collider
 
   constructor(camera, dom, collider) {
     this.camera = camera;
@@ -106,6 +107,8 @@ export class Player {
       },
     });
 
+    for (const b of this.blockers) this.pushOutOfBox(b, _segment, r);
+
     _delta.copy(_segment.start).setY(_segment.start.y - r).sub(this.position);
     this.onGround = _delta.y > Math.abs(dt * this.velocity.y * 0.25);
 
@@ -119,6 +122,33 @@ export class Player {
     } else {
       this.velocity.set(0, 0, 0);
     }
+  }
+
+  // Sideways push out of an upright box (a door), if the capsule overlaps it.
+  pushOutOfBox(b, seg, r) {
+    if (seg.end.y + r < b.min.y || seg.start.y - r > b.max.y) return;
+    const x = seg.start.x;
+    const z = seg.start.z;
+    const cx = THREE.MathUtils.clamp(x, b.min.x, b.max.x);
+    const cz = THREE.MathUtils.clamp(z, b.min.z, b.max.z);
+    let dx = x - cx;
+    let dz = z - cz;
+    const d = Math.hypot(dx, dz);
+    if (d >= r) return;
+    if (d > 1e-6) {
+      dx = (dx / d) * (r - d);
+      dz = (dz / d) * (r - d);
+    } else {
+      // Centre inside the box: leave by the nearest side.
+      const out = [b.min.x - r - x, b.max.x + r - x, b.min.z - r - z, b.max.z + r - z];
+      const i = out.reduce((best, v, j) => (Math.abs(v) < Math.abs(out[best]) ? j : best), 0);
+      dx = i < 2 ? out[i] : 0;
+      dz = i < 2 ? 0 : out[i];
+    }
+    seg.start.x += dx;
+    seg.end.x += dx;
+    seg.start.z += dz;
+    seg.end.z += dz;
   }
 
   // Move the player through a portal. The matrix is rigid and only rotates about Y.

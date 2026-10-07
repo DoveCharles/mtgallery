@@ -40,6 +40,9 @@ npm run level:start  # writes public/levels/start.glb
 
 The intro finds things by name: objects `M` and `Button`, materials `CeilingWhite`
 (pure white, blends into the ground) and `Material.002` (black corridor floor).
+The doors are `DoorLeft` and `DoorRight`, and the single `Keypad` (children `0Butt`–`9Butt`,
+`XButt`, `<Butt`, matching `*Emis` glow slots, `Light1`–`Light4`) is copied onto the
+other door in code. Code `5555` opens a door, X walks away, < clears.
 The prototype portal level is still at `/?level=test`.
 
 When exporting by hand, set **Lighting Mode → Non-Physical** so lights match Blender.
@@ -50,4 +53,5 @@ When exporting by hand, set **Lighting Mode → Non-Physical** so lights match B
 - `src/level.js`: loads a level and reads the Blender tags
 - `src/player.js`: first-person controller and collision (three-mesh-bvh)
 - `src/intro.js`: starting-area look and the opening camera drop
+- `src/keypad.js`: door keypads and opening doors
 - `src/portals.js`: portal rendering, recursion and teleporting
