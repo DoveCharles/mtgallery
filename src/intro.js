@@ -128,12 +128,32 @@ export class Intro {
   }
 }
 
+// The walls' second material (the first is CeilingWhite): board-formed concrete, tiled
+// as in the Unity project. The maps are 2k exports of the Unity textures in public/textures.
+const CONCRETE_REPEAT = 10;
+function concreteMaterial() {
+  const loader = new THREE.TextureLoader();
+  const load = (file, srgb) => {
+    const t = loader.load(`/textures/${file}`);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.setScalar(CONCRETE_REPEAT);
+    t.anisotropy = 8;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  return new THREE.MeshStandardMaterial({
+    map: load('concrete_layers_02_diff.jpg', true),
+    normalMap: load('concrete_layers_02_nor.jpg'),
+    roughnessMap: load('concrete_layers_02_rough.jpg'),
+  });
+}
+
 // Colours the starting area (by Blender object/material names, see tools/build_start.py)
 // and adds the white ground and the sky. Returns the button and the meshes forming the M/T.
 export function dressStartArea(root, scene, sky) {
   const white = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   const black = new THREE.MeshBasicMaterial({ color: 0x000000 });
-  const wall = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+  const wall = concreteMaterial();
   let button = null;
   const logo = [];
 
