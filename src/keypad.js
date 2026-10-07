@@ -136,7 +136,7 @@ function brushedSteel(envMap) {
 }
 
 class Keypad {
-  constructor(root, door, steel) {
+  constructor(root, door, steel, rim) {
     this.root = root;
     this.door = door;
     this.entered = '';
@@ -163,6 +163,10 @@ class Keypad {
       }
       if (o.material.name === 'Back' || o.material.name === 'Material.009') {
         o.material = steel;
+        return;
+      }
+      if (o.material.name === 'Rim') {
+        o.material = rim;
         return;
       }
       const light = /^Light([1-4])$/.exec(o.name) ?? /^Light([1-4])$/.exec(o.parent?.name ?? '');
@@ -272,6 +276,9 @@ export class KeypadSystem {
     const homeCenter = homeBox.getCenter(new THREE.Vector3());
 
     const steel = brushedSteel(envMap);
+    // The rim around the faceplate: the same steel, a few shades darker.
+    const rim = steel.clone();
+    rim.color.set(0x6b6e72);
     doors.forEach((doorMesh, i) => {
       let kp = keypad;
       if (i > 0) {
@@ -291,7 +298,7 @@ export class KeypadSystem {
         kp.updateMatrixWorld(true);
       }
       const door = new Door(doorMesh, kp);
-      const pad = new Keypad(kp, door, steel);
+      const pad = new Keypad(kp, door, steel, rim);
       pad.frame();
       this.doors.push(door);
       this.keypads.push(pad);
