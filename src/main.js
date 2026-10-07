@@ -25,8 +25,11 @@ scene.background = new THREE.Color(0x050506);
 
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 500);
 
-function addSkyAndSun() {
-  const sun = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(40), THREE.MathUtils.degToRad(150));
+// Sky, sun and sky light for the outdoor starting area. The sun casts shadows over the
+// level's bounds, and the sky itself (blurred into an environment map) lights everything
+// the sun doesn't, so shaded walls pick up a cool blue and lit ones a warm white.
+function addSkyAndSun(levelRoot) {
+  const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(40), THREE.MathUtils.degToRad(150));
   const sky = new Sky();
   sky.scale.setScalar(1000);
   sky.frustumCulled = false;
@@ -35,12 +38,33 @@ function addSkyAndSun() {
   u.rayleigh.value = 1.2;
   u.mieCoefficient.value = 0.004;
   u.mieDirectionalG.value = 0.8;
-  u.sunPosition.value.copy(sun);
+  u.sunPosition.value.copy(sunDir);
 
-  scene.add(new THREE.HemisphereLight(0xdde8ff, 0xb0b0b0, 2.2));
-  const light = new THREE.DirectionalLight(0xfff4e6, 1.5);
-  light.position.copy(sun).multiplyScalar(50);
-  scene.add(light);
+  const skyScene = new THREE.Scene();
+  skyScene.add(sky);
+  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(skyScene, 0, 0.1, 2000).texture;
+  scene.environmentIntensity = 0.08; // the Sky shader is very bright HDR
+  scene.add(new THREE.HemisphereLight(0xf2f0ea, 0x9a9a9a, 0.9)); // a little bounce from the ground
+
+  // Fit the shadow camera to the level.
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const bounds = new THREE.Box3().setFromObject(levelRoot);
+  const center = bounds.getCenter(new THREE.Vector3());
+  const radius = bounds.getBoundingSphere(new THREE.Sphere()).radius;
+  const sun = new THREE.DirectionalLight(0xfff1dc, 4);
+  sun.position.copy(center).addScaledVector(sunDir, radius * 2);
+  sun.target.position.copy(center);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(4096, 4096);
+  Object.assign(sun.shadow.camera, { left: -radius, right: radius, top: radius, bottom: -radius, near: radius, far: radius * 3 });
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.03;
+  sun.shadow.radius = 3;
+  scene.add(sun, sun.target);
+  levelRoot.traverse((o) => {
+    if (o.isMesh) o.castShadow = o.receiveShadow = true;
+  });
   return sky;
 }
 
@@ -56,7 +80,7 @@ async function start() {
   let intro = null;
   let keypads = null;
   if (levelName === 'start') {
-    const { button, logo } = dressStartArea(level.root, scene, addSkyAndSun());
+    const { button, logo } = dressStartArea(level.root, scene, addSkyAndSun(level.root));
     player.enabled = false;
     intro = new Intro({
       camera,
