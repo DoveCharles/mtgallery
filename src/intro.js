@@ -148,12 +148,61 @@ function concreteMaterial() {
   });
 }
 
+// The corridor floor (Material.002). It starts pure black so the title reads as a flat
+// logo, then fades up to dark worn concrete (the Unity project's Black material used the
+// same texture) once the camera is down in the corridor. setReveal(0..1) drives the fade.
+const FLOOR_TILE = 2; // metres per texture repeat
+function floorMaterial() {
+  const loader = new THREE.TextureLoader();
+  const load = (file, srgb) => {
+    const t = loader.load(`/textures/${file}`);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  const reveal = { value: 0 };
+  const m = new THREE.MeshStandardMaterial({
+    color: 0xd0d0d0,
+    map: load('concrete_floor_worn_001_diff.jpg', true),
+    normalMap: load('concrete_floor_worn_001_nor.jpg'),
+    roughness: 0.85,
+  });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.reveal = reveal;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', 'uniform float reveal;\nvoid main() {')
+      .replace('#include <dithering_fragment>', 'gl_FragColor.rgb *= reveal;\n#include <dithering_fragment>');
+  };
+  m.setReveal = (t) => (reveal.value = t);
+  return m;
+}
+
+// UVs straight down from above in world space, so the floor tiles at FLOOR_TILE
+// whatever its own UVs are.
+function planarUvs(mesh) {
+  const g = mesh.geometry.clone();
+  const p = g.attributes.position;
+  const v = new THREE.Vector3();
+  const uv = new Float32Array(p.count * 2);
+  mesh.updateWorldMatrix(true, false);
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).applyMatrix4(mesh.matrixWorld);
+    uv[i * 2] = v.x / FLOOR_TILE;
+    uv[i * 2 + 1] = -v.z / FLOOR_TILE;
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  mesh.geometry = g;
+}
+
 // Colours the starting area (by Blender object/material names, see tools/build_start.py)
-// and adds the white ground and the sky. Returns the button and the meshes forming the M/T.
+// and adds the white ground and the sky. Returns the button, the meshes forming the M/T
+// and the floor material (see floorMaterial).
 export function dressStartArea(root, scene, sky) {
   const white = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   const black = new THREE.MeshBasicMaterial({ color: 0x000000 });
   const wall = concreteMaterial();
+  const floor = floorMaterial();
   let button = null;
   const logo = [];
 
@@ -168,7 +217,8 @@ export function dressStartArea(root, scene, sky) {
       logo.push(o);
     } else if (o.material.name === 'CeilingWhite') o.material = white;
     else if (o.material.name === 'Material.002') {
-      o.material = black;
+      planarUvs(o);
+      o.material = floor;
       logo.push(o);
     }
     else if (o.material.name === 'concrete_layers_02') o.material = wall;
@@ -180,5 +230,5 @@ export function dressStartArea(root, scene, sky) {
   scene.add(ground);
 
   scene.add(sky);
-  return { button, logo };
+  return { button, logo, floor };
 }

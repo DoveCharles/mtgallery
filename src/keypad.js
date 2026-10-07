@@ -206,6 +206,10 @@ class Keypad {
         o.material = mats.steel;
         return;
       }
+      if (o.material.name === 'Screws') {
+        o.material = mats.screws;
+        return;
+      }
       if (o.material.name === 'Rim') {
         o.material = mats.rim;
         return;
@@ -329,7 +333,9 @@ export class KeypadSystem {
     const rim = steel.clone();
     rim.color.set(0x4a4d51);
     rim.roughness = 0.6;
-    const mats = { steel, rim, grille: speakerGrille(envMap) };
+    // Polished stainless screw heads.
+    const screws = new THREE.MeshStandardMaterial({ color: 0xc9cdd2, metalness: 1, roughness: 0.22, envMap, envMapIntensity: 1.4 });
+    const mats = { steel, rim, screws, grille: speakerGrille(envMap) };
     doors.forEach((doorMesh, i) => {
       let kp = keypad;
       if (i > 0) {
@@ -379,6 +385,11 @@ export class KeypadSystem {
 
   get busy() {
     return this.state !== 'idle';
+  }
+
+  // The meshes that light up: the four status lights and the button rims.
+  get glowMeshes() {
+    return this.keypads.flatMap((p) => [...p.lights, ...[...p.keys.values()].map((e) => e.emis)]).filter(Boolean);
   }
 
   pick(e) {

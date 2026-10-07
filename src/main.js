@@ -7,6 +7,8 @@ import { PortalSystem } from './portals.js';
 import { Intro, dressStartArea } from './intro.js';
 import { KeypadSystem, isMovingPart } from './keypad.js';
 import { AmbientOcclusion } from './ao.js';
+import { Bloom } from './bloom.js';
+import { softShadows } from './shadows.js';
 
 const overlay = document.getElementById('overlay');
 const status = document.getElementById('status');
@@ -20,6 +22,10 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.NeutralToneMapping;
 document.body.prepend(renderer.domElement);
+
+const FLOOR_FADE = 2.5; // seconds
+
+softShadows();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x050506);
@@ -49,7 +55,7 @@ function addSkyAndSun(levelRoot) {
 
   // Fit the shadow camera to the level.
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.BasicShadowMap; // filtered by softShadows()
   const bounds = new THREE.Box3().setFromObject(levelRoot);
   const center = bounds.getCenter(new THREE.Vector3());
   const radius = bounds.getBoundingSphere(new THREE.Sphere()).radius;
@@ -61,7 +67,6 @@ function addSkyAndSun(levelRoot) {
   Object.assign(sun.shadow.camera, { left: -radius, right: radius, top: radius, bottom: -radius, near: radius, far: radius * 3 });
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
-  sun.shadow.radius = 3;
   scene.add(sun, sun.target);
   levelRoot.traverse((o) => {
     if (o.isMesh) o.castShadow = o.receiveShadow = true;
@@ -80,8 +85,11 @@ async function start() {
 
   let intro = null;
   let keypads = null;
+  let floor = null;
+  let floorReveal = 0;
   if (levelName === 'start') {
-    const { button, logo } = dressStartArea(level.root, scene, addSkyAndSun(level.root));
+    let button, logo;
+    ({ button, logo, floor } = dressStartArea(level.root, scene, addSkyAndSun(level.root)));
     player.enabled = false;
     intro = new Intro({
       camera,
@@ -124,10 +132,13 @@ async function start() {
     camera.updateProjectionMatrix();
     portals.setSize();
     ao.setSize();
+    bloom.setSize();
     intro?.resize();
   });
 
   const ao = new AmbientOcclusion(renderer, scene, camera);
+  const bloom = new Bloom(renderer, scene, camera);
+  if (keypads) bloom.add(keypads.glowMeshes);
 
   const clock = new THREE.Clock();
   const prevEye = new THREE.Vector3();
@@ -138,6 +149,11 @@ async function start() {
     player.getEye(prevEye);
     player.update(dt);
     const cutscene = intro?.update(dt);
+    // The floor stays black (part of the logo) until the camera is down in the corridor.
+    if (floor && !(intro && (intro.state === 'title' || intro.state === 'drop'))) {
+      floorReveal = Math.min(floorReveal + dt / FLOOR_FADE, 1);
+      floor.setReveal(floorReveal);
+    }
     if (!keypads?.update(dt) && !cutscene) {
       portals.handleTraversal(player, prevEye, player.getEye(eye));
       player.updateCamera();
@@ -146,9 +162,10 @@ async function start() {
     portals.render(scene, camera);
     renderer.render(scene, camera);
     ao.render();
+    bloom.render();
   });
 
-  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, intro: () => intro, keypads: () => keypads };
+  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, bloom, intro: () => intro, keypads: () => keypads };
 }
 
 start().catch((err) => {
