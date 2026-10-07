@@ -6,6 +6,7 @@ import { Player } from './player.js';
 import { PortalSystem } from './portals.js';
 import { Intro, dressStartArea } from './intro.js';
 import { KeypadSystem, isMovingPart } from './keypad.js';
+import { AmbientOcclusion } from './ao.js';
 
 const overlay = document.getElementById('overlay');
 const status = document.getElementById('status');
@@ -122,8 +123,11 @@ async function start() {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     portals.setSize();
+    ao.setSize();
     intro?.resize();
   });
+
+  const ao = new AmbientOcclusion(renderer, scene, camera);
 
   const clock = new THREE.Clock();
   const prevEye = new THREE.Vector3();
@@ -141,9 +145,10 @@ async function start() {
 
     portals.render(scene, camera);
     renderer.render(scene, camera);
+    ao.render();
   });
 
-  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, intro: () => intro, keypads: () => keypads };
+  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, intro: () => intro, keypads: () => keypads };
 }
 
 start().catch((err) => {

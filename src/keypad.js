@@ -101,6 +101,46 @@ class Door {
   }
 }
 
+// The speaker ("Mic"): dark perforated metal, a square grid of round holes.
+const GRILLE_PITCH = 0.006; // metres between hole centres
+function speakerGrille(envMap) {
+  const N = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = N;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#7a7d80';
+  ctx.fillRect(0, 0, N, N);
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(N / 2, N / 2, N * 0.32, 0, Math.PI * 2);
+  ctx.fill();
+  const holes = new THREE.CanvasTexture(canvas);
+  holes.colorSpace = THREE.SRGBColorSpace;
+  holes.wrapS = holes.wrapT = THREE.RepeatWrapping;
+  holes.anisotropy = 8;
+  return new THREE.MeshStandardMaterial({ map: holes, metalness: 0.8, roughness: 0.45, envMap });
+}
+
+// Replaces the UVs of a flat quad with 0..1 over its two longest local axes, and
+// records its real size (world scale) so the grille can tile holes at a fixed pitch.
+function fillUvs(geometry) {
+  const g = geometry.clone();
+  g.computeBoundingBox();
+  const size = g.boundingBox.getSize(new THREE.Vector3());
+  const axes = [0, 1, 2].sort((a, b) => size.getComponent(b) - size.getComponent(a));
+  const [ua, va] = axes;
+  const p = g.attributes.position;
+  const uv = new Float32Array(p.count * 2);
+  const min = g.boundingBox.min;
+  for (let i = 0; i < p.count; i++) {
+    uv[i * 2] = (p.getComponent(i, ua) - min.getComponent(ua)) / size.getComponent(ua);
+    uv[i * 2 + 1] = (p.getComponent(i, va) - min.getComponent(va)) / size.getComponent(va);
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.userData.uvSize = [size.getComponent(ua), size.getComponent(va)];
+  return g;
+}
+
 // Light brushed steel for the keypad plates: "Back" and the faceplate ("Material.009").
 // The grain is a canvas of fine horizontal streaks used as a bump and roughness map;
 // anisotropy stretches the highlights along it. Metal needs something to reflect,
@@ -136,7 +176,7 @@ function brushedSteel(envMap) {
 }
 
 class Keypad {
-  constructor(root, door, steel, rim) {
+  constructor(root, door, mats) {
     this.root = root;
     this.door = door;
     this.entered = '';
@@ -153,6 +193,7 @@ class Keypad {
         if (k.part === 'Butt') {
           entry.butt = o;
           entry.buttRest = o.position.clone();
+          o.material = mats.rim;
         } else {
           entry.emis = o;
           entry.emisRest = o.position.clone();
@@ -162,11 +203,19 @@ class Keypad {
         return;
       }
       if (o.material.name === 'Back' || o.material.name === 'Material.009') {
-        o.material = steel;
+        o.material = mats.steel;
         return;
       }
       if (o.material.name === 'Rim') {
-        o.material = rim;
+        o.material = mats.rim;
+        return;
+      }
+      if (o.material.name === 'Mic') {
+        o.geometry = fillUvs(o.geometry);
+        o.material = mats.grille;
+        const scale = o.getWorldScale(new THREE.Vector3()).x;
+        const [w, h] = o.geometry.userData.uvSize;
+        o.material.map.repeat.set((w * scale) / GRILLE_PITCH, (h * scale) / GRILLE_PITCH);
         return;
       }
       const light = /^Light([1-4])$/.exec(o.name) ?? /^Light([1-4])$/.exec(o.parent?.name ?? '');
@@ -276,9 +325,11 @@ export class KeypadSystem {
     const homeCenter = homeBox.getCenter(new THREE.Vector3());
 
     const steel = brushedSteel(envMap);
-    // The rim around the faceplate: the same steel, a few shades darker.
+    // The rim around the faceplate and the buttons: the same steel, darker and rougher.
     const rim = steel.clone();
-    rim.color.set(0x6b6e72);
+    rim.color.set(0x4a4d51);
+    rim.roughness = 0.6;
+    const mats = { steel, rim, grille: speakerGrille(envMap) };
     doors.forEach((doorMesh, i) => {
       let kp = keypad;
       if (i > 0) {
@@ -298,7 +349,7 @@ export class KeypadSystem {
         kp.updateMatrixWorld(true);
       }
       const door = new Door(doorMesh, kp);
-      const pad = new Keypad(kp, door, steel, rim);
+      const pad = new Keypad(kp, door, mats);
       pad.frame();
       this.doors.push(door);
       this.keypads.push(pad);
