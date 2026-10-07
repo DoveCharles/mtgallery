@@ -101,8 +101,42 @@ class Door {
   }
 }
 
+// Light brushed steel for the keypad plates: "Back" and the faceplate ("Material.009").
+// The grain is a canvas of fine horizontal streaks used as a bump and roughness map;
+// anisotropy stretches the highlights along it. Metal needs something to reflect,
+// hence the env map.
+function brushedSteel(envMap) {
+  const W = 512;
+  const H = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 6000; i++) {
+    const v = 128 + (Math.random() - 0.5) * 90;
+    ctx.fillStyle = `rgba(${v},${v},${v},0.35)`;
+    ctx.fillRect(Math.random() * W - W / 2, Math.random() * H, W * (0.3 + Math.random()), 1);
+  }
+  const grain = new THREE.CanvasTexture(canvas);
+  grain.wrapS = grain.wrapT = THREE.RepeatWrapping;
+  grain.anisotropy = 8;
+  return new THREE.MeshPhysicalMaterial({
+    color: 0xe4e7ea,
+    metalness: 1,
+    roughness: 0.32,
+    roughnessMap: grain,
+    bumpMap: grain,
+    bumpScale: 0.3,
+    anisotropy: 0.7,
+    envMap,
+    envMapIntensity: 1.4,
+  });
+}
+
 class Keypad {
-  constructor(root, door) {
+  constructor(root, door, steel) {
     this.root = root;
     this.door = door;
     this.entered = '';
@@ -125,6 +159,10 @@ class Keypad {
           o.material = new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false });
         }
         this.keys.set(k.key, entry);
+        return;
+      }
+      if (o.material.name === 'Back' || o.material.name === 'Material.009') {
+        o.material = steel;
         return;
       }
       const light = /^Light([1-4])$/.exec(o.name) ?? /^Light([1-4])$/.exec(o.parent?.name ?? '');
@@ -207,7 +245,7 @@ export class KeypadSystem {
   active = null;
   time = 0;
 
-  constructor({ root, camera, dom, player, onEnter, onLeave }) {
+  constructor({ root, camera, dom, player, envMap, onEnter, onLeave }) {
     this.onEnter = onEnter;
     this.onLeave = onLeave;
     this.camera = camera;
@@ -233,6 +271,7 @@ export class KeypadSystem {
     const homeBox = new THREE.Box3().setFromObject(doors[0]);
     const homeCenter = homeBox.getCenter(new THREE.Vector3());
 
+    const steel = brushedSteel(envMap);
     doors.forEach((doorMesh, i) => {
       let kp = keypad;
       if (i > 0) {
@@ -252,7 +291,7 @@ export class KeypadSystem {
         kp.updateMatrixWorld(true);
       }
       const door = new Door(doorMesh, kp);
-      const pad = new Keypad(kp, door);
+      const pad = new Keypad(kp, door, steel);
       pad.frame();
       this.doors.push(door);
       this.keypads.push(pad);

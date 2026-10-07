@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadLevel } from './level.js';
 import { Player } from './player.js';
 import { PortalSystem } from './portals.js';
@@ -75,6 +76,7 @@ async function start() {
       camera,
       dom: renderer.domElement,
       player,
+      envMap: new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture,
       onEnter: () => (crosshair.hidden = true),
       onLeave: () => (crosshair.hidden = false),
     });
