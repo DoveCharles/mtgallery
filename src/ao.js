@@ -37,10 +37,17 @@ export class AmbientOcclusion {
     this.pass.setSize(size.x, size.y);
   }
 
-  // Darkens what `camera` has just drawn into `target` (null: the screen).
-  render(camera = this.camera, target = null) {
+  // Darkens what `camera` has just drawn into `target` (null: the screen), only within
+  // `scissor` (a pixel Vector4) if given.
+  render(camera = this.camera, target = null, scissor = null) {
     if (!this.enabled) return;
     const renderer = this.renderer;
+    const pass = this.pass;
+    const targets = [pass.normalRenderTarget, pass.gtaoRenderTarget, pass.pdRenderTarget];
+    for (const t of targets) {
+      t.scissorTest = !!scissor;
+      if (scissor) t.scissor.copy(scissor);
+    }
     // The normal/depth pass would otherwise redraw the shadow maps.
     const shadows = renderer.shadowMap.autoUpdate;
     renderer.shadowMap.autoUpdate = false;
@@ -56,5 +63,6 @@ export class AmbientOcclusion {
     renderer.setRenderTarget(target);
     this.quad.render(renderer);
     renderer.autoClear = autoClear;
+    for (const t of targets) t.scissorTest = false;
   }
 }

@@ -11,6 +11,8 @@ import * as THREE from 'three';
 
 const ROT_Y_180 = new THREE.Matrix4().makeRotationY(Math.PI);
 const FULL_RECT = { minX: -1, maxX: 1, minY: -1, maxY: 1 };
+const SCISSOR_PAD = 16; // pixels around a portal's on-screen rectangle that are drawn too
+const SCISSOR_NEAR = 0.5; // closer than this to a portal, its views cover the whole screen
 
 const screenVertex = /* glsl */ `
   #include <common>
@@ -39,6 +41,7 @@ const screenFragment = /* glsl */ `
 
 const _v = new THREE.Vector3();
 const _v4 = new THREE.Vector4();
+const _scissor = new THREE.Vector4();
 const _n = new THREE.Vector3();
 const _m = new THREE.Matrix4();
 const _viewProj = new THREE.Matrix4();
@@ -163,7 +166,9 @@ function overlaps(a, b) {
 // which world it is in; each view is rendered after `setWorld(name)` for the world its
 // camera is in, and walking through a portal moves the player into the exit's world.
 export class PortalSystem {
-  // afterView(camera, target) runs after each portal view is drawn (for post effects).
+  // afterView(camera, target, level, scissor) runs after each portal view is drawn (for post
+  // effects); level 0 is the view straight through the portal, deeper ones are portals seen
+  // in it, and scissor is the pixel rectangle (Vector4) the view was limited to.
   constructor(renderer, scene, defs, { world, setWorld, afterView } = {}) {
     this.renderer = renderer;
     this.portals = defs.map((d) => new Portal(d));
@@ -256,6 +261,21 @@ export class PortalSystem {
     }
   }
 
+  // Pixel rectangle the portal covers in the main view, padded.
+  scissorFor(portal, mainCamera) {
+    const { width, height } = portal.target;
+    let rect = FULL_RECT;
+    if (portal.signedDistance(mainCamera.position) > SCISSOR_NEAR) {
+      _viewProj.multiplyMatrices(mainCamera.projectionMatrix, mainCamera.matrixWorldInverse);
+      rect = portal.screenRect(_viewProj) ?? FULL_RECT;
+    }
+    const x0 = Math.max(0, Math.floor(((rect.minX + 1) / 2) * width) - SCISSOR_PAD);
+    const y0 = Math.max(0, Math.floor(((rect.minY + 1) / 2) * height) - SCISSOR_PAD);
+    const x1 = Math.min(width, Math.ceil(((rect.maxX + 1) / 2) * width) + SCISSOR_PAD);
+    const y1 = Math.min(height, Math.ceil(((rect.maxY + 1) / 2) * height) + SCISSOR_PAD);
+    return _scissor.set(x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0));
+  }
+
   renderPortal(portal, scene, mainCamera) {
     const renderer = this.renderer;
     const exit = portal.linked;
@@ -279,6 +299,14 @@ export class PortalSystem {
     }
     renderer.clippingPlanes = [exit.plane];
 
+    // Only the part of the screen the portal covers is ever seen (deeper levels too: they
+    // show through screens inside it), so draw nothing outside that.
+    const scissor = this.scissorFor(portal, mainCamera);
+    for (const t of [portal.target, this.scratch]) {
+      t.scissor.copy(scissor);
+      t.scissorTest = true;
+    }
+
     for (let i = depth - 1; i >= 0; i--) {
       // Level 0 must land in the portal's own target; deeper levels alternate.
       const target = i % 2 === 0 ? portal.target : this.scratch;
@@ -290,9 +318,10 @@ export class PortalSystem {
       cam.updateMatrixWorld();
       renderer.setRenderTarget(target);
       renderer.render(scene, cam);
-      this.afterView(cam, target);
+      this.afterView(cam, target, i, scissor);
     }
 
+    portal.target.scissorTest = this.scratch.scissorTest = false;
     renderer.setRenderTarget(null);
     renderer.clippingPlanes = [];
   }

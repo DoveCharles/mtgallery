@@ -64,6 +64,8 @@ function addSkyAndSun(levelRoot) {
   // Fit the shadow camera to the level.
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.BasicShadowMap; // filtered by softShadows()
+  // Redrawn once a frame (in the loop), not again for every portal view.
+  renderer.shadowMap.autoUpdate = false;
   const bounds = new THREE.Box3().setFromObject(levelRoot);
   const center = bounds.getCenter(new THREE.Vector3());
   const radius = bounds.getBoundingSphere(new THREE.Sphere()).radius;
@@ -156,7 +158,9 @@ async function start() {
   const portals = new PortalSystem(renderer, scene, [...level.portals, ...rooms.flatMap((r) => r.portals), ...(keypads?.portalDefs ?? [])], {
     world: isStart ? 'start' : undefined,
     setWorld,
-    afterView: (cam, target) => ao.render(cam, target),
+    // AO only on the view straight through a portal: the deeper, smaller views would
+    // each cost a whole AO pass.
+    afterView: (cam, target, level, scissor) => level === 0 && ao.render(cam, target, scissor),
   });
   const doorPortals = keypads?.doors.map((_, i) => portals.byId.get(`door${i}`)) ?? [];
 
@@ -205,6 +209,7 @@ async function start() {
       player.updateCamera();
     }
 
+    renderer.shadowMap.needsUpdate = true;
     portals.render(scene, camera);
     renderer.render(scene, camera);
     ao.render();
