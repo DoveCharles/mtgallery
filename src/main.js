@@ -9,6 +9,7 @@ import { KeypadSystem, isMovingPart } from './keypad.js';
 import { AmbientOcclusion } from './ao.js';
 import { Bloom } from './bloom.js';
 import { softShadows } from './shadows.js';
+import { addCards } from './cards.js';
 
 const overlay = document.getElementById('overlay');
 const status = document.getElementById('status');
@@ -166,6 +167,8 @@ async function start() {
   } else {
     scene.add(new THREE.HemisphereLight(0xffffff, 0x222226, 0.6));
   }
+  // After the suns, which turn shadows on for everything in a level: the cards only receive them.
+  await Promise.all([level, ...rooms].map((l) => addCards(l.root)));
   const portals = new PortalSystem(renderer, scene, [...level.portals, ...rooms.flatMap((r) => r.portals), ...(keypads?.portalDefs ?? [])], {
     world: isStart ? 'start' : undefined,
     setWorld,

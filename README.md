@@ -24,6 +24,7 @@ Levels are `.glb` files in `public/levels/`, exported from Blender with
 | `recursion = 4` | a portal | Optional. How many times a portal can be seen through itself. |
 | `spawn = 1` | an empty | Player start, looking along the empty's local +Y. |
 | `nocollide = 1` | a mesh | The player can walk through it. |
+| `cardarea = 1` | a flat plane | Floor area the sentence cards are scattered over, using the level's `Card` mesh as the card. One card per line of `public/sentences.txt`. |
 
 `tools/build_test_level.py` builds the prototype level from scratch and is a working
 example of all of the above:
@@ -55,3 +56,4 @@ When exporting by hand, set **Lighting Mode → Non-Physical** so lights match B
 - `src/intro.js`: starting-area look and the opening camera drop
 - `src/keypad.js`: door keypads and opening doors
 - `src/portals.js`: portal rendering, recursion and teleporting
+- `src/cards.js`: the sentence cards (all cards baked into one mesh, all their letters into another)

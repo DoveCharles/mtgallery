@@ -12,6 +12,10 @@ out of their mesh into a portal plane named "Entrance". The room was modelled at
 starting area's scale (that opening is 2 x 3.16, the doors 2.5 x 3.955), so it is
 exported scaled up by SCALE. glTF has no Glass BSDF, so glass materials are exported as
 clear, mostly transparent surfaces instead. The .blend itself is left untouched.
+
+The "Card" mesh (Left room) is the template for the sentence cards: the game lays one
+card per line of public/sentences.txt over the floor plane tagged `cardarea` (see
+src/cards.js). If the .blend has no such plane, one covering the big hall is added here.
 """
 import bpy
 import bmesh
@@ -23,6 +27,8 @@ SCALE = 1.25
 VARIANTS = {"Left": "room5555-left", "Right": "room5555-right"}
 PORTAL_MATERIAL = "PortalFace"
 GLASS_ALPHA = 0.15
+# Default card area (Blender world coordinates): the big hall's floor, 1 m in from the walls.
+CARD_AREA = ((-61.97, 1.92), (-20.41, 23.32), 0.0)
 
 
 def cut_portal():
@@ -80,6 +86,23 @@ def convert_glass():
         m.blend_method = "BLEND"
 
 
+def tag_cards(keep):
+    """Card template and the floor area they're scattered over (both walk-through)."""
+    card = bpy.data.objects.get("Card")
+    if not card:
+        return
+    card["nocollide"] = 1
+    if any(o.get("cardarea") for o in bpy.data.objects):
+        return
+    (x0, y0), (x1, y1), z = CARD_AREA
+    me = bpy.data.meshes.new("CardArea")
+    me.from_pydata([(x0, y0, z), (x1, y0, z), (x1, y1, z), (x0, y1, z)], [], [(0, 1, 2, 3)])
+    area = bpy.data.objects.new("CardArea", me)
+    area["cardarea"] = 1
+    area["nocollide"] = 1
+    bpy.data.collections[keep].objects.link(area)
+
+
 def build(keep):
     bpy.ops.wm.open_mainfile(filepath=BLEND)
     for name in VARIANTS:
@@ -88,6 +111,7 @@ def build(keep):
                 bpy.data.objects.remove(o)
     cut_portal()
     convert_glass()
+    tag_cards(keep)
 
     # Everything under one scaled root (scaling the objects themselves would change
     # their bevel/solidify modifiers).
