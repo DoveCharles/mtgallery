@@ -39,6 +39,12 @@ const SHADE = { 'room5555-left': { under: 'Ceiling', light: 0.06 } };
 // "Entrance" portal): one room for the code, or one per door (by the door's mesh name).
 // Rooms share the scene with the starting area, each moved out of the way, and are lit
 // by the shared sky plus their own sun and lights (see setWorld).
+// Looking down at the cards in room 5555 (left) zooms in so they can be read.
+const ZOOM_WORLD = 'room5555-left';
+const ZOOM_PITCH = [0.35, 1.2]; // downward pitch (rad) where the zoom starts, and where it's full
+const ZOOM_MAX = 2.5; // magnification at full zoom
+const ZOOM_RATE = 6; // how fast the zoom eases toward its target (1/s)
+
 const ROOMS = { 5555: { DoorLeft: 'room5555-left', DoorRight: 'room5555-right' } };
 const roomBehind = (door, room) => (typeof room === 'string' ? room : room[door.mesh.name]);
 // Room i sits at (1000 * (i + 1), ROOM_HEIGHT, 0): raised clear of the intro's white
@@ -51,7 +57,8 @@ softShadows();
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x050506);
 
-const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 500);
+const PLAY_FOV = 70;
+const camera = new THREE.PerspectiveCamera(PLAY_FOV, innerWidth / innerHeight, 0.05, 500);
 
 // Sky and sky light, shared by every world (the rooms are outdoors too, so the sky shows
 // through any openings). The sky itself (blurred into an environment map) lights everything
@@ -247,6 +254,7 @@ async function start() {
   const clock = new THREE.Clock();
   const prevEye = new THREE.Vector3();
   const eye = new THREE.Vector3();
+  let zoom = 1;
 
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.1);
@@ -268,6 +276,13 @@ async function start() {
     if (!keypads?.update(dt, portals.world === 'start') && !cutscene) {
       portals.handleTraversal(player, prevEye, player.getEye(eye));
       player.updateCamera();
+      const t = portals.world === ZOOM_WORLD ? THREE.MathUtils.smoothstep(-player.pitch, ZOOM_PITCH[0], ZOOM_PITCH[1]) : 0;
+      zoom += (THREE.MathUtils.lerp(1, ZOOM_MAX, t) - zoom) * (1 - Math.exp(-ZOOM_RATE * dt));
+      const fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(PLAY_FOV / 2)) / zoom));
+      if (Math.abs(camera.fov - fov) > 1e-3) {
+        camera.fov = fov;
+        camera.updateProjectionMatrix();
+      }
     }
 
     for (const s of screens) s.update(dt, portals.world === s.world);

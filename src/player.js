@@ -16,10 +16,10 @@ const JOY_RADIUS = 50; // px the knob can travel from the base's centre
 // First-person walker: pointer-lock mouse look, WASD, capsule-vs-level collision.
 export class Player {
   radius = 0.3;
-  height = 1.75;
-  eyeHeight = 1.6;
-  walkSpeed = 2.2;
-  runSpeed = 4.5;
+  height = 1.95;
+  eyeHeight = 1.8;
+  walkSpeed = 3.3;
+  runSpeed = 6.75;
   gravity = -20;
   lookSpeed = 0.002;
 
