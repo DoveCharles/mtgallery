@@ -12,6 +12,7 @@ import { softShadows } from './shadows.js';
 import { addCards } from './cards.js';
 import { addSentenceScreens } from './screens.js';
 import { applyShadeZones } from './shade.js';
+import { Sfx } from './sfx.js';
 
 const overlay = document.getElementById('overlay');
 const status = document.getElementById('status');
@@ -121,6 +122,14 @@ async function start() {
   const player = new Player(camera, renderer.domElement, buildCollider([level, ...rooms]));
   if (level.spawn) player.spawnAt(level.spawn);
 
+  const listener = new THREE.AudioListener();
+  camera.add(listener);
+  const resumeAudio = () => listener.context.state !== 'running' && listener.context.resume();
+  addEventListener('pointerdown', resumeAudio);
+  addEventListener('keydown', resumeAudio);
+  const sfx = isStart ? new Sfx(listener) : null;
+  let landed = false; // the drone comes in once the intro's drop is over
+
   let intro = null;
   let keypads = null;
   let floor = null;
@@ -157,7 +166,11 @@ async function start() {
       player,
       button,
       logo,
-      onPress: () => renderer.domElement.requestPointerLock()?.catch?.(() => {}),
+      onPress: () => {
+        renderer.domElement.requestPointerLock()?.catch?.(() => {});
+        sfx.play('drop');
+      },
+      onLanded: () => (landed = true),
       onDone: () => {
         intro = null;
         crosshair.hidden = false;
@@ -171,6 +184,7 @@ async function start() {
       player,
       envMap: new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture,
       codes: ROOMS,
+      sfx,
       onOpen: (door, room) => portals.connect(`door${keypads.doors.indexOf(door)}`, `${roomBehind(door, room)}/Entrance`),
       onEnter: () => (crosshair.hidden = true),
       onLeave: () => (crosshair.hidden = false),
@@ -181,11 +195,6 @@ async function start() {
   }
   // After the suns, which turn shadows on for everything in a level: the cards only receive them.
   const cards = (await Promise.all([level, ...rooms].map((l) => addCards(l.root)))).filter(Boolean);
-  const listener = new THREE.AudioListener();
-  camera.add(listener);
-  const resumeAudio = () => listener.context.state !== 'running' && listener.context.resume();
-  addEventListener('pointerdown', resumeAudio);
-  addEventListener('keydown', resumeAudio);
   const worldNames = [isStart ? 'start' : undefined, ...roomNames];
   const screens = (
     await Promise.all([level, ...rooms].map((l, i) => addSentenceScreens(l, listener, worldNames[i])))
@@ -253,6 +262,7 @@ async function start() {
     }
 
     for (const s of screens) s.update(dt, portals.world === s.world);
+    sfx?.setDrone(landed && portals.world === 'start');
     renderer.shadowMap.needsUpdate = true;
     ao.strength = intro ? intro.aoStrength : 1;
     portals.render(scene, camera);
@@ -261,7 +271,7 @@ async function start() {
     bloom.render();
   });
 
-  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, bloom, intro: () => intro, keypads: () => keypads };
+  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, bloom, intro: () => intro, keypads: () => keypads, sfx };
 }
 
 // Compiles every shader and allocates every render target the game can need while still

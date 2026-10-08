@@ -21,12 +21,13 @@ export class Intro {
   state = 'title';
   time = 0;
 
-  constructor({ camera, dom, player, button, logo, onPress, onDone }) {
+  constructor({ camera, dom, player, button, logo, onPress, onLanded, onDone }) {
     this.camera = camera;
     this.dom = dom;
     this.player = player;
     this.button = button;
     this.onPress = onPress;
+    this.onLanded = onLanded;
     this.onDone = onDone;
     this.playFov = camera.fov;
     this.playNear = camera.near;
@@ -107,6 +108,7 @@ export class Intro {
       if (t === 1) {
         this.state = 'tilt';
         this.time = 0;
+        this.onLanded?.();
       }
     } else if (this.state === 'tilt') {
       const t = Math.min(this.time / TILT_TIME, 1);

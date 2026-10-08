@@ -12,6 +12,9 @@ import * as THREE from 'three';
 // The X key walks away, < clears. The keys carry no printed numbers; which is which
 // comes from the Blender names (0Butt..9Butt, XButt, <Butt).
 //
+// Sounds (sfx): a random click per key, a buzz for a wrong code, and the door opening
+// and closing from the door itself.
+//
 // The blend has one keypad (object "Keypad", on "DoorLeft"); the right door gets a copy.
 
 const APPROACH_DISTANCE = 1.4; // from the keypad, along the floor
@@ -314,8 +317,9 @@ export class KeypadSystem {
   time = 0;
 
   // codes: { '5555': room, ... } (room is passed on as is); onOpen(door, room) when one is entered.
-  constructor({ root, camera, dom, player, envMap, codes, onOpen, onEnter, onLeave }) {
+  constructor({ root, camera, dom, player, envMap, codes, sfx, onOpen, onEnter, onLeave }) {
     this.codes = codes;
+    this.sfx = sfx;
     this.onOpen = onOpen;
     this.onEnter = onEnter;
     this.onLeave = onLeave;
@@ -388,10 +392,13 @@ export class KeypadSystem {
       const key = this.pick(e);
       this.active.setHover(key);
       if (!key) return;
+      this.sfx?.click();
       if (key === 'X') return this.leave();
       const result = this.active.press(key, this.codes);
-      if (result && result !== 'wrong') {
+      if (result === 'wrong') this.sfx?.play('incorrect');
+      else if (result) {
         const door = this.active.door;
+        this.sfx?.play('doorSuccess', { at: door.mesh });
         this.onOpen?.(door, result);
         door.open();
         this.leave();
@@ -463,7 +470,10 @@ export class KeypadSystem {
       if (d.state !== 'open') continue;
       const here = d.baseBox.getCenter(_v).setY(p.y).distanceTo(p);
       const nearest = Math.min(...this.doors.filter((o) => o !== d).map((o) => o.baseBox.getCenter(new THREE.Vector3()).setY(p.y).distanceTo(p)));
-      if (here > nearest) d.close();
+      if (here > nearest) {
+        d.close();
+        this.sfx?.play('doorClose', { at: d.mesh });
+      }
     }
   }
 
