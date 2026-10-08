@@ -23,6 +23,7 @@ const FILL = 0.6; // how much of the screen the keypad takes up
 const MOVE_TIME = 0.8;
 const PRESS_DEPTH = 0.004;
 const PRESS_TIME = 0.12;
+const GLOW_FADE = 0.3; // a button's glow dies away over this once it's let go
 const FEEDBACK_TIME = 1.5; // red/green fade, as in the Unity KeypadController
 const DOOR_WAIT = 0.5;
 const DOOR_BACK_TIME = 1;
@@ -258,7 +259,10 @@ class Keypad {
   }
 
   setHover(key) {
-    for (const [k, e] of this.keys) e.emis?.material.color.setScalar(k === key ? 1 : 0);
+    // Lights up at once; update() fades the rest out.
+    this.hover = key;
+    const e = this.keys.get(key);
+    if (e) e.glow = 1;
   }
 
   // Returns the room for a correct code, 'wrong', or null while still typing.
@@ -283,6 +287,11 @@ class Keypad {
   }
 
   update(dt) {
+    for (const [k, e] of this.keys) {
+      if (k !== this.hover) e.glow = Math.max(0, (e.glow ?? 0) - dt / GLOW_FADE);
+      e.emis?.material.color.setScalar(e.glow ?? 0);
+    }
+
     // Buttons spring back after being pushed in.
     for (const e of this.keys.values()) {
       if (e.press <= 0) continue;
@@ -382,15 +391,19 @@ export class KeypadSystem {
     });
 
     dom.addEventListener('pointermove', (e) => {
-      if (this.state !== 'active') return;
+      if (this.state !== 'active' || e.pointerType === 'touch') return;
       this.hoverKey = this.pick(e);
       this.active.setHover(this.hoverKey);
       dom.style.cursor = this.hoverKey ? 'pointer' : '';
     });
+    // A finger doesn't hover, so on touch a pressed button lets go of its glow straight away.
+    let touch = false;
+    dom.addEventListener('pointerdown', (e) => (touch = e.pointerType === 'touch'));
     dom.addEventListener('click', (e) => {
       if (this.state !== 'active') return;
       const key = this.pick(e);
       this.active.setHover(key);
+      if (touch) this.active.setHover(null);
       if (!key) return;
       this.sfx?.click(this.active.keys.get(key)?.butt ?? this.active.root);
       if (key === 'X') return this.leave();
