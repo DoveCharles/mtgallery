@@ -8,6 +8,7 @@ import * as THREE from 'three';
 // and all the letters in another, each letter a little quad cut out of a single glyph
 // atlas. That's two draw calls and one small texture however many cards there are.
 
+const SIZE = 2; // cards are this many times the size of the Blender template
 const FONT = 'Georgia, "Times New Roman", serif';
 const ATLAS_PX = 96; // glyph size in the atlas
 const PAD = 12; // atlas pixels around each glyph, so mipmaps don't bleed into neighbours
@@ -27,7 +28,7 @@ export async function addCards(root, url = '/sentences.txt') {
   if (!template || !area) return null;
   root.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(area);
-  const base = template.matrixWorld.clone().setPosition(0, 0, 0);
+  const base = template.matrixWorld.clone().setPosition(0, 0, 0).scale(new THREE.Vector3(SIZE, SIZE, SIZE));
   template.removeFromParent();
   area.removeFromParent();
 
@@ -69,6 +70,7 @@ export async function addCards(root, url = '/sentences.txt') {
       polygonOffsetUnits: -1,
     }),
   );
+  text.name = 'CardText';
   text.renderOrder = 1;
   // Both meshes are in world space already.
   const group = new THREE.Group();

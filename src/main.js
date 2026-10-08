@@ -168,7 +168,7 @@ async function start() {
     scene.add(new THREE.HemisphereLight(0xffffff, 0x222226, 0.6));
   }
   // After the suns, which turn shadows on for everything in a level: the cards only receive them.
-  await Promise.all([level, ...rooms].map((l) => addCards(l.root)));
+  const cards = (await Promise.all([level, ...rooms].map((l) => addCards(l.root)))).filter(Boolean);
   const portals = new PortalSystem(renderer, scene, [...level.portals, ...rooms.flatMap((r) => r.portals), ...(keypads?.portalDefs ?? [])], {
     world: isStart ? 'start' : undefined,
     setWorld,
@@ -196,7 +196,8 @@ async function start() {
   });
 
   const ao = new AmbientOcclusion(renderer, scene, camera);
-  ao.hidden = portals.screens;
+  // Card text too: its letter quads are solid in the AO's normal pass and would come out as black bars.
+  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText'))];
   const bloom = new Bloom(renderer, scene, camera);
   if (keypads) bloom.add(keypads.glowMeshes);
   await warmUp(portals, ao, bloom);
