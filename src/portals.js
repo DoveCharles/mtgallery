@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SCREEN_STENCIL } from './ao.js';
 
 // How portals work
 // ----------------
@@ -29,6 +30,8 @@ const screenFragment = /* glsl */ `
   uniform vec2 resolution;
   uniform bool enabled;
   uniform vec3 fallback;
+  uniform bool useAo;
+  uniform sampler2D aoMap;
   #include <common>
   #include <clipping_planes_pars_fragment>
   void main() {
@@ -36,6 +39,8 @@ const screenFragment = /* glsl */ `
     gl_FragColor = enabled ? texture2D(map, gl_FragCoord.xy / resolution) : vec4(fallback, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
+    // Ambient occlusion of the view, applied after tone mapping like the main view's.
+    if (useAo) gl_FragColor.rgb *= texture2D(aoMap, gl_FragCoord.xy / resolution).r;
   }
 `;
 
@@ -96,7 +101,10 @@ class Portal {
       resolution: { value: new THREE.Vector2(1, 1) },
       enabled: { value: false },
       fallback: { value: new THREE.Color(0x050506) },
+      useAo: { value: false },
+      aoMap: { value: null },
     };
+    this.aoMap = null; // from afterView, for the view straight through
     this.screen = new THREE.Mesh(
       new THREE.BoxGeometry(1, 1, 1),
       new THREE.ShaderMaterial({
@@ -105,6 +113,10 @@ class Portal {
         fragmentShader: screenFragment,
         clipping: true,
         side: THREE.DoubleSide,
+        // Marks its pixels so the main view's AO leaves them alone (see ao.js).
+        stencilWrite: true,
+        stencilRef: SCREEN_STENCIL,
+        stencilZPass: THREE.ReplaceStencilOp,
       }),
     );
     this.screen.scale.set(this.width, this.height, 0.001);
@@ -166,9 +178,10 @@ function overlaps(a, b) {
 // which world it is in; each view is rendered after `setWorld(name)` for the world its
 // camera is in, and walking through a portal moves the player into the exit's world.
 export class PortalSystem {
-  // afterView(camera, target, level, scissor) runs after each portal view is drawn (for post
-  // effects); level 0 is the view straight through the portal, deeper ones are portals seen
-  // in it, and scissor is the pixel rectangle (Vector4) the view was limited to.
+  // afterView(camera, target, level, scissor, portal) runs after each portal view is drawn
+  // (for post effects); level 0 is the view straight through the portal, deeper ones are
+  // portals seen in it, and scissor is the pixel rectangle (Vector4) the view was limited to.
+  // For level 0 it may return an AO texture (see ao.js) for the portal's screen to apply.
   constructor(renderer, scene, defs, { world, setWorld, afterView } = {}) {
     this.renderer = renderer;
     this.portals = defs.map((d) => new Portal(d));
@@ -257,7 +270,9 @@ export class PortalSystem {
       const show = visible.includes(p);
       p.screen.visible = show;
       p.uniforms.enabled.value = show;
+      p.uniforms.useAo.value = show && !!p.aoMap;
       if (show) p.uniforms.map.value = p.target.texture;
+      p.uniforms.aoMap.value = p.aoMap;
     }
   }
 
@@ -295,7 +310,7 @@ export class PortalSystem {
     // Inside a portal view: the exit is clipped away, other portals show a flat colour.
     for (const p of this.portals) {
       p.screen.visible = p !== exit;
-      p.uniforms.enabled.value = false;
+      p.uniforms.enabled.value = p.uniforms.useAo.value = false;
     }
     renderer.clippingPlanes = [exit.plane];
 
@@ -318,7 +333,8 @@ export class PortalSystem {
       cam.updateMatrixWorld();
       renderer.setRenderTarget(target);
       renderer.render(scene, cam);
-      this.afterView(cam, target, i, scissor);
+      const ao = this.afterView(cam, target, i, scissor, portal);
+      if (i === 0) portal.aoMap = ao || null;
     }
 
     portal.target.scissorTest = this.scratch.scissorTest = false;

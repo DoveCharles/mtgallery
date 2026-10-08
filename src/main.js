@@ -18,7 +18,7 @@ const crosshair = document.getElementById('crosshair');
 // ?level=test loads the portal prototype instead of the starting area.
 const levelName = new URLSearchParams(location.search).get('level') ?? 'start';
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.NeutralToneMapping;
@@ -174,7 +174,7 @@ async function start() {
     setWorld,
     // AO only on the view straight through a portal: the deeper, smaller views would
     // each cost a whole AO pass.
-    afterView: (cam, target, level, scissor) => level === 0 && ao.render(cam, target, scissor),
+    afterView: (cam, target, level, scissor, portal) => level === 0 && ao.renderFactor(cam, scissor, portal),
   });
   const doorPortals = keypads?.doors.map((_, i) => portals.byId.get(`door${i}`)) ?? [];
 
@@ -259,7 +259,7 @@ async function warmUp(portals, ao, bloom) {
   renderer.clippingPlanes = [new THREE.Plane(new THREE.Vector3(0, 1, 0), 1e6)];
   renderer.setRenderTarget(portals.scratch);
   renderer.render(scene, camera);
-  ao.render(camera, portals.scratch);
+  ao.renderFactor(camera, null, portals.portals[0]);
   renderer.clippingPlanes = [];
   for (const o of culled) o.frustumCulled = true;
 

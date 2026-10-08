@@ -18,7 +18,22 @@ const LINE = 1.2; // line height, in ems
 const LIFT = 0.003; // cards float this far above the floor (m)
 const INK_LIFT = 0.0006; // and the ink this far above the card
 
-export async function addCards(root, url = '/sentences.txt') {
+// Every line of public/sentences.txt, parsed the same way as the old Unity
+// RandomSentenceCycler. Fetched once, shared with the sentence screens.
+let sentenceList;
+export function loadSentences() {
+  sentenceList ??= fetch('/sentences.txt')
+    .then((r) => r.text())
+    .then((t) =>
+      t
+        .split(/\r\n|\n|\r/)
+        .map((s) => s.trim().replace(/\\$/, ''))
+        .filter(Boolean),
+    );
+  return sentenceList;
+}
+
+export async function addCards(root) {
   let template = null;
   let area = null;
   root.traverse((o) => {
@@ -29,11 +44,7 @@ export async function addCards(root, url = '/sentences.txt') {
   root.updateMatrixWorld(true);
   const base = template.matrixWorld.clone().setPosition(0, 0, 0).scale(new THREE.Vector3(SIZE, SIZE, SIZE));
 
-  // Same parsing as the old Unity RandomSentenceCycler.
-  const sentences = (await (await fetch(url)).text())
-    .split(/\r\n|\n|\r/)
-    .map((s) => s.trim().replace(/\\$/, ''))
-    .filter(Boolean);
+  const sentences = [...(await loadSentences())];
 
   const rand = mulberry32(5555);
   shuffle(sentences, rand);
