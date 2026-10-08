@@ -10,6 +10,8 @@ import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 // already shaded, and the doorway around them mustn't darken them.
 const RADIUS = 1.2; // world units
 const INTENSITY = 0.9;
+const SCALE = 0.5; // worked out at half resolution and stretched over the frame: it's soft anyway
+const SAMPLES = 8;
 
 export class AmbientOcclusion {
   enabled = true;
@@ -18,13 +20,13 @@ export class AmbientOcclusion {
   constructor(renderer, scene, camera) {
     this.renderer = renderer;
     this.camera = camera;
-    const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2()).multiplyScalar(SCALE).floor();
     this.pass = new GTAOPass(scene, camera, size.x, size.y, undefined, {
       radius: RADIUS,
       distanceExponent: 1,
       thickness: 1,
       scale: 1,
-      samples: 16,
+      samples: SAMPLES,
     });
     this.pass.output = GTAOPass.OUTPUT.Off; // only compute; the blend is done below
     this.pass.blendMaterial.uniforms.tDiffuse.value = this.pass.pdRenderTarget.texture;
@@ -33,7 +35,7 @@ export class AmbientOcclusion {
   }
 
   setSize() {
-    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2()).multiplyScalar(SCALE).floor();
     this.pass.setSize(size.x, size.y);
   }
 
@@ -46,7 +48,7 @@ export class AmbientOcclusion {
     const targets = [pass.normalRenderTarget, pass.gtaoRenderTarget, pass.pdRenderTarget];
     for (const t of targets) {
       t.scissorTest = !!scissor;
-      if (scissor) t.scissor.copy(scissor);
+      if (scissor) t.scissor.set(Math.floor(scissor.x * SCALE), Math.floor(scissor.y * SCALE), Math.ceil(scissor.z * SCALE) + 1, Math.ceil(scissor.w * SCALE) + 1);
     }
     // The normal/depth pass would otherwise redraw the shadow maps.
     const shadows = renderer.shadowMap.autoUpdate;
