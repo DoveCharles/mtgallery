@@ -8,7 +8,7 @@ import * as THREE from 'three';
 // and all the letters in another, each letter a little quad cut out of a single glyph
 // atlas. That's two draw calls and one small texture however many cards there are.
 
-const SIZE = 2; // cards are this many times the size of the Blender template
+const SIZE = 3; // cards are this many times the size of the Blender template
 const FONT = 'Georgia, "Times New Roman", serif';
 const ATLAS_PX = 96; // glyph size in the atlas
 const PAD = 12; // atlas pixels around each glyph, so mipmaps don't bleed into neighbours
