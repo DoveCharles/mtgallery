@@ -49,10 +49,10 @@ export class Player {
       this.pitch -= e.movementY * this.lookSpeed;
       this.pitch = THREE.MathUtils.clamp(this.pitch, -1.5, 1.5);
     });
-    // Scroll up raises the camera, scroll down lowers it.
+    // Scroll down raises the camera, scroll up lowers it.
     addEventListener('wheel', (e) => {
       if (!this.enabled) return;
-      this.eyeTarget = THREE.MathUtils.clamp(this.eyeTarget - e.deltaY * 0.002, this.minEye, this.maxEye);
+      this.eyeTarget = THREE.MathUtils.clamp(this.eyeTarget + e.deltaY * 0.002, this.minEye, this.maxEye);
     }, { passive: true });
 
     this.stick = { x: 0, y: 0 }; // on-screen joystick, -1..1 (y up = forward)
