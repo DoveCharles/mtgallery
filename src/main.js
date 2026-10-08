@@ -252,6 +252,11 @@ async function start() {
     const dt = Math.min(clock.getDelta(), 0.1);
     player.getEye(prevEye);
     player.update(dt);
+    if (sfx) {
+      // Horizontal speed this frame, before any portal moves the player.
+      const speed = Math.hypot(player.getEye(eye).x - prevEye.x, eye.z - prevEye.z) / dt;
+      sfx.footsteps(dt, player.enabled && player.onGround && speed > 0.1, speed / player.walkSpeed);
+    }
     const cutscene = intro?.update(dt);
     // The floor stays black (part of the logo) until the camera is down in the corridor.
     if (floor && !(intro && (intro.state === 'title' || intro.state === 'drop'))) {
@@ -268,6 +273,7 @@ async function start() {
     for (const s of screens) s.update(dt, portals.world === s.world);
     for (const b of bulbs) b.update(dt, portals.world === b.world);
     sfx?.setDrone(landed && portals.world === 'start');
+    sfx?.setReverb(portals.world === 'start');
     renderer.shadowMap.needsUpdate = true;
     ao.strength = intro ? intro.aoStrength : 1;
     portals.render(scene, camera);
