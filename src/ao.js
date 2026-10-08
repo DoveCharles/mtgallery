@@ -12,6 +12,9 @@ const RADIUS = 1.2; // world units
 const INTENSITY = 0.9;
 const SCALE = 0.5; // worked out at half resolution and stretched over the frame: it's soft anyway
 const SAMPLES = 8;
+// How far in depth a sample may sit from the point and still count as occluding it. At 1, the
+// floor beside a wall seen at a glancing angle missed the wall and stayed light along the seam.
+const THICKNESS = 3;
 
 export class AmbientOcclusion {
   enabled = true;
@@ -24,7 +27,7 @@ export class AmbientOcclusion {
     this.pass = new GTAOPass(scene, camera, size.x, size.y, undefined, {
       radius: RADIUS,
       distanceExponent: 1,
-      thickness: 1,
+      thickness: THICKNESS,
       scale: 1,
       samples: SAMPLES,
     });
