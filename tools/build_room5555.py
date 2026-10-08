@@ -14,8 +14,8 @@ exported scaled up by SCALE. glTF has no Glass BSDF, so glass materials are expo
 clear, mostly transparent surfaces instead. The .blend itself is left untouched.
 
 The "Card" mesh (Left room) is the template for the sentence cards: the game lays one
-card per line of public/sentences.txt over the floor plane tagged `cardarea` (see
-src/cards.js). If the .blend has no such plane, one covering the big hall is added here.
+card per line of public/sentences.txt over the faces of the Room mesh's "Floor" vertex
+group, copied out here into a `cardarea` mesh (see src/cards.js).
 """
 import bpy
 import bmesh
@@ -27,8 +27,7 @@ SCALE = 1.25
 VARIANTS = {"Left": "room5555-left", "Right": "room5555-right"}
 PORTAL_MATERIAL = "PortalFace"
 GLASS_ALPHA = 0.15
-# Default card area (Blender world coordinates): the big hall's floor, 1 m in from the walls.
-CARD_AREA = ((-61.97, 1.92), (-20.41, 23.32), 0.0)
+CARD_FLOOR_GROUP = "Floor"  # vertex group on the Room mesh: the faces the cards are spread over
 
 
 def cut_portal():
@@ -92,11 +91,19 @@ def tag_cards(keep):
     if not card:
         return
     card["nocollide"] = 1
-    if any(o.get("cardarea") for o in bpy.data.objects):
-        return
-    (x0, y0), (x1, y1), z = CARD_AREA
+    room = bpy.data.objects["Room"]
+    group = room.vertex_groups.get(CARD_FLOOR_GROUP)
+    if not group:
+        raise SystemExit(f'Room has no "{CARD_FLOOR_GROUP}" vertex group for the cards')
+    src = room.data
+    inside = {v.index for v in src.vertices if any(g.group == group.index and g.weight > 0 for g in v.groups)}
+    faces = [p for p in src.polygons if all(i in inside for i in p.vertices)]
+    if not faces:
+        raise SystemExit(f'No faces lie wholly in the "{CARD_FLOOR_GROUP}" vertex group')
+    used = sorted({i for p in faces for i in p.vertices})
+    remap = {old: new for new, old in enumerate(used)}
     me = bpy.data.meshes.new("CardArea")
-    me.from_pydata([(x0, y0, z), (x1, y0, z), (x1, y1, z), (x0, y1, z)], [], [(0, 1, 2, 3)])
+    me.from_pydata([room.matrix_world @ src.vertices[i].co for i in used], [], [[remap[i] for i in p.vertices] for p in faces])
     area = bpy.data.objects.new("CardArea", me)
     area["cardarea"] = 1
     area["nocollide"] = 1

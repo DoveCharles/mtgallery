@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 // The sentence cards: one card per line of public/sentences.txt, scattered face up over
-// the floor plane tagged `cardarea`, using the level's "Card" mesh as the template.
+// the faces tagged `cardarea` (the room's Floor vertex group), using the level's "Card" mesh as the template.
 //
 // Thousands of cards would be thousands of draw calls (and thousands of textures) done
 // naively, so everything is baked into two static meshes instead: all the cards in one,
@@ -27,10 +27,7 @@ export async function addCards(root, url = '/sentences.txt') {
   });
   if (!template || !area) return null;
   root.updateMatrixWorld(true);
-  const bounds = new THREE.Box3().setFromObject(area);
   const base = template.matrixWorld.clone().setPosition(0, 0, 0).scale(new THREE.Vector3(SIZE, SIZE, SIZE));
-  template.removeFromParent();
-  area.removeFromParent();
 
   // Same parsing as the old Unity RandomSentenceCycler.
   const sentences = (await (await fetch(url)).text())
@@ -51,7 +48,9 @@ export async function addCards(root, url = '/sentences.txt') {
   const cardH = (max.z - min.z) * scale.z;
 
   const atlas = buildAtlas(sentences);
-  const placements = scatter(bounds, sentences.length, Math.hypot(cardW, cardH) / 2, rand);
+  const placements = scatter(area, sentences.length, Math.hypot(cardW, cardH) / 2, rand);
+  template.removeFromParent();
+  area.removeFromParent();
 
   const cards = bakeCards(g, base, placements);
   const ink = bakeInk(sentences, atlas, placements, base, min, max, cardW, cardH);
@@ -155,23 +154,39 @@ function fit(sentence, atlas, w, h) {
 
 // --- Placement -----------------------------------------------------------------------------
 
-// Jittered grid over the area, cards never overlapping: [x, y, z, yaw] per card.
-function scatter(box, n, radius, rand) {
+// Jittered grid over the area's bounds, cards never overlapping: [x, y, z, yaw] per card.
+// Only cells lying wholly on the area's faces are used (found by dropping rays onto it),
+// so the area can be any shape.
+function scatter(area, n, radius, rand) {
+  area.material.side = THREE.DoubleSide;
+  const box = new THREE.Box3().setFromObject(area);
   const sizeX = box.max.x - box.min.x;
   const sizeZ = box.max.z - box.min.z;
-  let cell = Math.sqrt((sizeX * sizeZ) / n);
-  while (Math.floor(sizeX / cell) * Math.floor(sizeZ / cell) < n) cell *= 0.99;
-  const cols = Math.floor(sizeX / cell);
-  const rows = Math.floor(sizeZ / cell);
-  const cells = Array.from({ length: cols * rows }, (_, i) => i);
-  shuffle(cells, rand);
-  const room = Math.max(0, cell / 2 - radius);
-  return cells.slice(0, n).map((i) => [
-    box.min.x + ((i % cols) + 0.5) * cell + (rand() * 2 - 1) * room,
-    box.max.y + LIFT,
-    box.min.z + (Math.floor(i / cols) + 0.5) * cell + (rand() * 2 - 1) * room,
-    rand() * Math.PI * 2,
-  ]);
+  const ray = new THREE.Raycaster();
+  const down = new THREE.Vector3(0, -1, 0);
+  const groundAt = (x, z) => {
+    ray.set(new THREE.Vector3(x, box.max.y + 1, z), down);
+    return ray.intersectObject(area, false)[0]?.point.y;
+  };
+  // Shrink the grid until enough cells fit on the area.
+  for (let cell = Math.sqrt((sizeX * sizeZ) / n); ; cell *= 0.98) {
+    const cols = Math.floor(sizeX / cell);
+    const rows = Math.floor(sizeZ / cell);
+    const cells = [];
+    for (let i = 0; i < cols * rows; i++) {
+      const x = box.min.x + ((i % cols) + 0.5) * cell;
+      const z = box.min.z + (Math.floor(i / cols) + 0.5) * cell;
+      const h = cell / 2;
+      const y = groundAt(x, z);
+      if (y !== undefined && [[-h, -h], [h, -h], [h, h], [-h, h]].every(([dx, dz]) => groundAt(x + dx, z + dz) !== undefined)) {
+        cells.push([x, y, z]);
+      }
+    }
+    if (cells.length < n) continue;
+    shuffle(cells, rand);
+    const room = Math.max(0, cell / 2 - radius);
+    return cells.slice(0, n).map(([x, y, z]) => [x + (rand() * 2 - 1) * room, y + LIFT, z + (rand() * 2 - 1) * room, rand() * Math.PI * 2]);
+  }
 }
 
 const placeMatrix = (m, [x, y, z, yaw], base) => m.makeRotationY(yaw).setPosition(x, y, z).multiply(base);
