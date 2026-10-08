@@ -18,6 +18,9 @@ export class Player {
   radius = 0.3;
   height = 1.95;
   eyeHeight = 1.8;
+  eyeTarget = 1.8; // scroll sets this; eyeHeight eases toward it
+  minEye = 0.5;
+  maxEye = 3;
   walkSpeed = 3.3;
   runSpeed = 6.75;
   gravity = -20;
@@ -46,6 +49,11 @@ export class Player {
       this.pitch -= e.movementY * this.lookSpeed;
       this.pitch = THREE.MathUtils.clamp(this.pitch, -1.5, 1.5);
     });
+    // Scroll up raises the camera, scroll down lowers it.
+    addEventListener('wheel', (e) => {
+      if (!this.enabled) return;
+      this.eyeTarget = THREE.MathUtils.clamp(this.eyeTarget - e.deltaY * 0.002, this.minEye, this.maxEye);
+    }, { passive: true });
 
     this.stick = { x: 0, y: 0 }; // on-screen joystick, -1..1 (y up = forward)
     if (matchMedia('(pointer: coarse)').matches) this.initTouch();
@@ -139,6 +147,8 @@ export class Player {
     _move.set(-sin * forward + cos * strafe, 0, -cos * forward - sin * strafe);
     if (_move.lengthSq() > 1) _move.normalize();
     _move.multiplyScalar(speed);
+
+    this.eyeHeight += (this.eyeTarget - this.eyeHeight) * (1 - Math.exp(-12 * dt));
 
     const step = dt / PHYSICS_STEPS;
     for (let i = 0; i < PHYSICS_STEPS; i++) this.step(step, _move);
