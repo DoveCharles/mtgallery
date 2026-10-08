@@ -207,7 +207,7 @@ function planarUvs(mesh) {
 }
 
 // Colours the starting area (by Blender object/material names, see tools/build_start.py)
-// and adds the white ground and the sky. Returns the button, the meshes forming the M/T
+// and adds the black ground and the sky. Returns the button, the meshes forming the M/T
 // and the floor material (see floorMaterial).
 export function dressStartArea(root, scene, sky) {
   const white = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
@@ -235,8 +235,8 @@ export function dressStartArea(root, scene, sky) {
     else if (o.material.name === 'concrete_layers_02') o.material = wall;
   });
 
-  // The ground the white slab top has to disappear into.
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000), white);
+  // The black ground under the starting area.
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000), new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false }));
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
 
