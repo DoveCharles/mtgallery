@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
-// Selective bloom: only the meshes passed in glow (the keypad lights and button rims).
+// Selective bloom: only the meshes passed in glow (the keypad lights and button rims, the
+// lightbulb's filament).
 // They are drawn into a half-size buffer over a black, depth-only copy of the scene (so
 // walls still hide them), blurred, and added on top of the finished frame. Nothing runs
 // while none of them is lit.
@@ -61,8 +62,8 @@ export class Bloom {
 
   lit() {
     return this.meshes.some((m) => {
-      const c = m.material.color;
-      return m.visible && Math.max(c.r, c.g, c.b) > THRESHOLD;
+      const { color: c, emissive: e, emissiveIntensity: k = 0 } = m.material;
+      return m.visible && (Math.max(c.r, c.g, c.b) > THRESHOLD || (e && Math.max(e.r, e.g, e.b) * k > THRESHOLD));
     });
   }
 

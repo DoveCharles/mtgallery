@@ -12,6 +12,7 @@ import { softShadows } from './shadows.js';
 import { addCards } from './cards.js';
 import { addSentenceScreens } from './screens.js';
 import { applyShadeZones } from './shade.js';
+import { addFlickeringBulb } from './bulb.js';
 import { Sfx } from './sfx.js';
 
 const overlay = document.getElementById('overlay');
@@ -206,6 +207,8 @@ async function start() {
       setWorld?.lights[s.world]?.push(l);
     }
   }
+  const bulbs = (await Promise.all([level, ...rooms].map((l, i) => addFlickeringBulb(l, listener, worldNames[i])))).filter(Boolean);
+  for (const b of bulbs) setWorld?.lights[b.world]?.push(b.light);
   const portals = new PortalSystem(renderer, scene, [...level.portals, ...rooms.flatMap((r) => r.portals), ...(keypads?.portalDefs ?? [])], {
     world: isStart ? 'start' : undefined,
     setWorld,
@@ -234,9 +237,10 @@ async function start() {
 
   const ao = new AmbientOcclusion(renderer, scene, camera);
   // Card text too: its letter quads are solid in the AO's normal pass and would come out as black bars.
-  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText')), ...screens.flatMap((s) => s.meshes)];
+  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText')), ...screens.flatMap((s) => s.meshes), ...bulbs.flatMap((b) => b.meshes)];
   const bloom = new Bloom(renderer, scene, camera);
   if (keypads) bloom.add(keypads.glowMeshes);
+  for (const b of bulbs) bloom.add(b.glows);
   await warmUp(portals, ao, bloom);
   overlay.classList.add('hidden');
 
@@ -262,6 +266,7 @@ async function start() {
     }
 
     for (const s of screens) s.update(dt, portals.world === s.world);
+    for (const b of bulbs) b.update(dt, portals.world === b.world);
     sfx?.setDrone(landed && portals.world === 'start');
     renderer.shadowMap.needsUpdate = true;
     ao.strength = intro ? intro.aoStrength : 1;
