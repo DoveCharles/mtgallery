@@ -245,6 +245,19 @@ async function warmUp(portals, ao, bloom) {
   renderer.clippingPlanes = [];
   await Promise.all(compiling);
 
+  // compileAsync misses the variants a portal view needs (drawn into a target, so linear
+  // output and no tone mapping, under a clip plane, then AO under the same plane), so draw
+  // one for real, with culling off so every room's textures and buffers are uploaded too.
+  const culled = [];
+  scene.traverse((o) => o.frustumCulled && culled.push(o));
+  for (const o of culled) o.frustumCulled = false;
+  renderer.clippingPlanes = [new THREE.Plane(new THREE.Vector3(0, 1, 0), 1e6)];
+  renderer.setRenderTarget(portals.scratch);
+  renderer.render(scene, camera);
+  ao.render(camera, portals.scratch);
+  renderer.clippingPlanes = [];
+  for (const o of culled) o.frustumCulled = true;
+
   for (const target of [portals.scratch, ...portals.portals.map((p) => p.target)]) {
     renderer.setRenderTarget(target);
     renderer.clear();
