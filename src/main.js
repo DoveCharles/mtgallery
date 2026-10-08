@@ -29,10 +29,13 @@ const SKY_LIGHT = 0.08; // the Sky shader is very bright HDR
 // Keypad codes and the rooms they open (public/levels/<room>.glb, entered through its
 // "Entrance" portal): one room for the code, or one per door (by the door's mesh name).
 // Rooms share the scene with the starting area, each moved out of the way, and are lit
-// by their own lights only (see setWorld).
+// by the shared sky plus their own sun and lights (see setWorld).
 const ROOMS = { 5555: { DoorLeft: 'room5555-left', DoorRight: 'room5555-right' } };
 const roomBehind = (door, room) => (typeof room === 'string' ? room : room[door.mesh.name]);
-const ROOM_SPACING = new THREE.Vector3(1000, 0, 0); // level with the start: player.js respawns anyone below y -50
+// Room i sits at (1000 * (i + 1), ROOM_HEIGHT, 0): raised clear of the intro's white
+// ground plane (y 0) so its floor doesn't fight with it and light can get in from outside.
+const ROOM_SPACING = 1000;
+const ROOM_HEIGHT = 2;
 
 softShadows();
 
@@ -41,11 +44,12 @@ scene.background = new THREE.Color(0x050506);
 
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 500);
 
-// Sky, sun and sky light for the outdoor starting area. The sun casts shadows over the
-// level's bounds, and the sky itself (blurred into an environment map) lights everything
+// Sky and sky light, shared by every world (the rooms are outdoors too, so the sky shows
+// through any openings). The sky itself (blurred into an environment map) lights everything
 // the sun doesn't, so shaded walls pick up a cool blue and lit ones a warm white.
-function addSkyAndSun(levelRoot) {
-  const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(40), THREE.MathUtils.degToRad(150));
+const SUN_DIR = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(40), THREE.MathUtils.degToRad(150));
+
+function addSky() {
   const sky = new Sky();
   sky.scale.setScalar(1000);
   sky.frustumCulled = false;
@@ -54,28 +58,37 @@ function addSkyAndSun(levelRoot) {
   u.rayleigh.value = 1.2;
   u.mieCoefficient.value = 0.004;
   u.mieDirectionalG.value = 0.8;
-  u.sunPosition.value.copy(sunDir);
+  u.sunPosition.value.copy(SUN_DIR);
 
   const skyScene = new THREE.Scene();
   skyScene.add(sky);
   scene.environment = new THREE.PMREMGenerator(renderer).fromScene(skyScene, 0, 0.1, 2000).texture;
   scene.environmentIntensity = SKY_LIGHT;
+  // Keep the sky box around whichever camera is drawing (the rooms are 1000s of m away).
+  sky.onBeforeRender = (r, s, cam) => {
+    sky.position.setFromMatrixPosition(cam.matrixWorld);
+    sky.updateMatrixWorld();
+  };
   const bounce = new THREE.HemisphereLight(0xf2f0ea, 0x9a9a9a, 0.9); // a little bounce from the ground
   scene.add(bounce);
 
-  // Fit the shadow camera to the level.
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.BasicShadowMap; // filtered by softShadows()
   // Redrawn once a frame (in the loop), not again for every portal view.
   renderer.shadowMap.autoUpdate = false;
+  return sky;
+}
+
+// A sun for one world, its shadow camera fitted to that world's level.
+function addSun(levelRoot, mapSize) {
   const bounds = new THREE.Box3().setFromObject(levelRoot);
   const center = bounds.getCenter(new THREE.Vector3());
   const radius = bounds.getBoundingSphere(new THREE.Sphere()).radius;
   const sun = new THREE.DirectionalLight(0xfff1dc, 4);
-  sun.position.copy(center).addScaledVector(sunDir, radius * 2);
+  sun.position.copy(center).addScaledVector(SUN_DIR, radius * 2);
   sun.target.position.copy(center);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.mapSize.set(mapSize, mapSize);
   Object.assign(sun.shadow.camera, { left: -radius, right: radius, top: radius, bottom: -radius, near: radius, far: radius * 3 });
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
@@ -83,7 +96,7 @@ function addSkyAndSun(levelRoot) {
   levelRoot.traverse((o) => {
     if (o.isMesh) o.castShadow = o.receiveShadow = true;
   });
-  return { sky, lights: [bounce, sun] };
+  return sun;
 }
 
 async function start() {
@@ -94,7 +107,7 @@ async function start() {
   const roomNames = isStart ? [...new Set(Object.values(ROOMS).flatMap((r) => (typeof r === 'string' ? r : Object.values(r))))] : [];
   const rooms = await Promise.all(
     roomNames.map((name, i) =>
-      loadLevel(`/levels/${name}.glb`, scene, null, undefined, { world: name, offset: ROOM_SPACING.clone().multiplyScalar(i + 1) }),
+      loadLevel(`/levels/${name}.glb`, scene, null, undefined, { world: name, offset: new THREE.Vector3(ROOM_SPACING * (i + 1), ROOM_HEIGHT, 0) }),
     ),
   );
 
@@ -108,15 +121,13 @@ async function start() {
   let setWorld;
   if (isStart) {
     let button, logo;
-    const outdoor = addSkyAndSun(level.root);
-    ({ button, logo, floor } = dressStartArea(level.root, scene, outdoor.sky));
+    const sky = addSky();
+    ({ button, logo, floor } = dressStartArea(level.root, scene, sky));
 
-    // Each world keeps its own lights; the others' are switched off while it's drawn.
-    const worldLights = { start: outdoor.lights };
+    // Each world keeps its own sun and lights; the others' are switched off while it's drawn.
+    const worldLights = { start: [addSun(level.root, 4096)] };
     rooms.forEach((room, i) => {
-      const ambient = new THREE.HemisphereLight(0xffffff, 0x222226, 0.6);
-      scene.add(ambient);
-      worldLights[roomNames[i]] = [ambient];
+      worldLights[roomNames[i]] = [addSun(room.root, 2048)];
       room.root.traverse((o) => o.isLight && worldLights[roomNames[i]].push(o));
     });
     for (const l of Object.values(worldLights).flat()) l.userData.intensity = l.intensity;
@@ -124,8 +135,6 @@ async function start() {
       for (const [name, lights] of Object.entries(worldLights)) {
         for (const l of lights) l.intensity = name === world ? l.userData.intensity : 0;
       }
-      scene.environmentIntensity = world === 'start' ? SKY_LIGHT : 0;
-      outdoor.sky.visible = world === 'start';
     };
 
     player.enabled = false;
