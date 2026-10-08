@@ -22,6 +22,11 @@ const LINE = 1.2; // line height, in ems
 const OFFSET = 0.01; // m the text floats off the panel
 const TICK_VOLUME = 0.12;
 const GLOW = 5; // area light intensity
+// The screens' light can't reach their own wall, so a dimmer, wider area light a little in
+// front of each panel shines back at it: the light bounced off the floor and ceiling.
+const BOUNCE = 0.6; // intensity
+const BOUNCE_SIZE = 1.6; // times the panel's size
+const BOUNCE_DISTANCE = 3; // m in front of the panel
 const GLOW_COLOR = 0xdfe8ff;
 
 let tickBuffer;
@@ -101,7 +106,10 @@ export async function addSentenceScreens(level, listener, world) {
     const light = new THREE.RectAreaLight(GLOW_COLOR, GLOW, width, height);
     light.position.copy(center).addScaledVector(front, depth / 2 + OFFSET * 2);
     light.lookAt(light.position.clone().add(front)); // shines along its -z: out of the panel
-    group.add(light);
+    const bounce = new THREE.RectAreaLight(GLOW_COLOR, BOUNCE, width * BOUNCE_SIZE, height * BOUNCE_SIZE);
+    bounce.position.copy(center).addScaledVector(front, BOUNCE_DISTANCE);
+    bounce.lookAt(center);
+    group.add(light, bounce);
 
     let sound = null;
     if (buffer) {
@@ -111,7 +119,7 @@ export async function addSentenceScreens(level, listener, world) {
       sound.position.copy(center);
       group.add(sound);
     }
-    return { interval: INTERVALS[i], timer: 0, order: [], canvas, texture, text, light, sound };
+    return { interval: INTERVALS[i], timer: 0, order: [], canvas, texture, text, lights: [light, bounce], sound };
   });
   group.updateMatrixWorld(true);
 
@@ -124,7 +132,7 @@ export async function addSentenceScreens(level, listener, world) {
 
   return {
     meshes: panels.map((p) => p.text),
-    lights: panels.map((p) => p.light),
+    lights: panels.flatMap((p) => p.lights),
     // `here`: the player is in this world, so the ticks can be heard.
     update(dt, here) {
       for (const p of panels) {
