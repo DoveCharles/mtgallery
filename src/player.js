@@ -11,6 +11,7 @@ const _delta = new THREE.Vector3();
 const _move = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 const _rot = new THREE.Matrix3();
+const JOY_RADIUS = 50; // px the knob can travel from the base's centre
 
 // First-person walker: pointer-lock mouse look, WASD, capsule-vs-level collision.
 export class Player {
@@ -45,6 +46,70 @@ export class Player {
       this.pitch -= e.movementY * this.lookSpeed;
       this.pitch = THREE.MathUtils.clamp(this.pitch, -1.5, 1.5);
     });
+
+    this.stick = { x: 0, y: 0 }; // on-screen joystick, -1..1 (y up = forward)
+    if (matchMedia('(pointer: coarse)').matches) this.initTouch();
+  }
+
+  // Phones: a joystick bottom-left for walking, and dragging anywhere else to look.
+  initTouch() {
+    const base = (this.joystick = document.createElement('div'));
+    base.id = 'joystick';
+    const knob = document.createElement('div');
+    base.append(knob);
+    document.body.append(base);
+
+    let stickId = null;
+    let origin = null;
+    const moveStick = (e) => {
+      let dx = e.clientX - origin.x;
+      let dy = e.clientY - origin.y;
+      const d = Math.hypot(dx, dy);
+      if (d > JOY_RADIUS) {
+        dx *= JOY_RADIUS / d;
+        dy *= JOY_RADIUS / d;
+      }
+      knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      this.stick.x = dx / JOY_RADIUS;
+      this.stick.y = -dy / JOY_RADIUS;
+    };
+    const releaseStick = (e) => {
+      if (e.pointerId !== stickId) return;
+      stickId = null;
+      knob.style.transform = '';
+      this.stick.x = this.stick.y = 0;
+    };
+    base.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      stickId = e.pointerId;
+      base.setPointerCapture(e.pointerId);
+      const r = base.getBoundingClientRect();
+      origin = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      moveStick(e);
+    });
+    base.addEventListener('pointermove', (e) => e.pointerId === stickId && moveStick(e));
+    base.addEventListener('pointerup', releaseStick);
+    base.addEventListener('pointercancel', releaseStick);
+
+    let lookId = null;
+    let last = null;
+    this.dom.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch' || lookId !== null) return;
+      lookId = e.pointerId;
+      last = { x: e.clientX, y: e.clientY };
+    });
+    addEventListener('pointermove', (e) => {
+      if (e.pointerId !== lookId) return;
+      if (this.enabled) {
+        this.yaw -= (e.clientX - last.x) * this.lookSpeed * 2;
+        this.pitch -= (e.clientY - last.y) * this.lookSpeed * 2;
+        this.pitch = THREE.MathUtils.clamp(this.pitch, -1.5, 1.5);
+      }
+      last = { x: e.clientX, y: e.clientY };
+    });
+    const releaseLook = (e) => e.pointerId === lookId && (lookId = null);
+    addEventListener('pointerup', releaseLook);
+    addEventListener('pointercancel', releaseLook);
   }
 
   // Start at an object's position, looking along its local -Z (Blender local +Y).
@@ -63,8 +128,10 @@ export class Player {
 
   update(dt) {
     const k = this.enabled ? this.keys : NO_KEYS;
-    const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
-    const strafe = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
+    if (this.joystick) this.joystick.hidden = !this.enabled;
+    const stick = this.enabled ? this.stick : { x: 0, y: 0 };
+    const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) + stick.y;
+    const strafe = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) + stick.x;
     const speed = k.has('ShiftLeft') || k.has('ShiftRight') ? this.runSpeed : this.walkSpeed;
 
     const sin = Math.sin(this.yaw);
