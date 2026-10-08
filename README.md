@@ -57,3 +57,4 @@ When exporting by hand, set **Lighting Mode → Non-Physical** so lights match B
 - `src/keypad.js`: door keypads and opening doors
 - `src/portals.js`: portal rendering, recursion and teleporting
 - `src/cards.js`: the sentence cards (all cards baked into one mesh, all their letters into another)
+- `src/screens.js`: the CardScreens panels (a new random sentence every 1 / 0.5 / 0.25 s, each lighting the room with an area light). Rooms listed in `SHADE` (main.js) get no sun and little sky light, so the screens light them.

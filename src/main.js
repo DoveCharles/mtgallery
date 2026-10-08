@@ -10,6 +10,7 @@ import { AmbientOcclusion } from './ao.js';
 import { Bloom } from './bloom.js';
 import { softShadows } from './shadows.js';
 import { addCards } from './cards.js';
+import { addSentenceScreens } from './screens.js';
 
 const overlay = document.getElementById('overlay');
 const status = document.getElementById('status');
@@ -26,6 +27,10 @@ document.body.prepend(renderer.domElement);
 
 const FLOOR_FADE = 2.5; // seconds
 const SKY_LIGHT = 0.08; // the Sky shader is very bright HDR
+const BOUNCE_LIGHT = 0.9;
+// Worlds in shadow: no sun, and only this much of the sky and bounce light, so the
+// sentence screens (lit by area lights, see screens.js) are what lights the room.
+const SHADE = { 'room5555-left': 0.06 };
 
 // Keypad codes and the rooms they open (public/levels/<room>.glb, entered through its
 // "Entrance" portal): one room for the code, or one per door (by the door's mesh name).
@@ -70,8 +75,9 @@ function addSky() {
     sky.position.setFromMatrixPosition(cam.matrixWorld);
     sky.updateMatrixWorld();
   };
-  const bounce = new THREE.HemisphereLight(0xf2f0ea, 0x9a9a9a, 0.9); // a little bounce from the ground
+  const bounce = new THREE.HemisphereLight(0xf2f0ea, 0x9a9a9a, BOUNCE_LIGHT); // a little bounce from the ground
   scene.add(bounce);
+  sky.userData.bounce = bounce;
 
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.BasicShadowMap; // filtered by softShadows()
@@ -128,15 +134,20 @@ async function start() {
     // Each world keeps its own sun and lights; the others' are switched off while it's drawn.
     const worldLights = { start: [addSun(level.root, 4096)] };
     rooms.forEach((room, i) => {
-      worldLights[roomNames[i]] = [addSun(room.root, 2048)];
+      worldLights[roomNames[i]] = SHADE[roomNames[i]] === undefined ? [addSun(room.root, 2048)] : [];
       room.root.traverse((o) => o.isLight && worldLights[roomNames[i]].push(o));
     });
     for (const l of Object.values(worldLights).flat()) l.userData.intensity = l.intensity;
+    const { bounce } = sky.userData;
     setWorld = (world) => {
       for (const [name, lights] of Object.entries(worldLights)) {
         for (const l of lights) l.intensity = name === world ? l.userData.intensity : 0;
       }
+      const shade = SHADE[world] ?? 1;
+      scene.environmentIntensity = SKY_LIGHT * shade;
+      bounce.intensity = BOUNCE_LIGHT * shade;
     };
+    setWorld.lights = worldLights;
 
     player.enabled = false;
     intro = new Intro({
@@ -169,6 +180,22 @@ async function start() {
   }
   // After the suns, which turn shadows on for everything in a level: the cards only receive them.
   const cards = (await Promise.all([level, ...rooms].map((l) => addCards(l.root)))).filter(Boolean);
+  const listener = new THREE.AudioListener();
+  camera.add(listener);
+  const resumeAudio = () => listener.context.state !== 'running' && listener.context.resume();
+  addEventListener('pointerdown', resumeAudio);
+  addEventListener('keydown', resumeAudio);
+  const worldNames = [isStart ? 'start' : undefined, ...roomNames];
+  const screens = (
+    await Promise.all([level, ...rooms].map((l, i) => addSentenceScreens(l, listener, worldNames[i])))
+  ).filter(Boolean);
+  // The screens' area lights belong to their world, like its other lights.
+  for (const s of screens) {
+    for (const l of s.lights) {
+      l.userData.intensity = l.intensity;
+      setWorld?.lights[s.world]?.push(l);
+    }
+  }
   const portals = new PortalSystem(renderer, scene, [...level.portals, ...rooms.flatMap((r) => r.portals), ...(keypads?.portalDefs ?? [])], {
     world: isStart ? 'start' : undefined,
     setWorld,
@@ -197,7 +224,7 @@ async function start() {
 
   const ao = new AmbientOcclusion(renderer, scene, camera);
   // Card text too: its letter quads are solid in the AO's normal pass and would come out as black bars.
-  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText'))];
+  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText')), ...screens.flatMap((s) => s.meshes)];
   const bloom = new Bloom(renderer, scene, camera);
   if (keypads) bloom.add(keypads.glowMeshes);
   await warmUp(portals, ao, bloom);
@@ -224,6 +251,7 @@ async function start() {
       player.updateCamera();
     }
 
+    for (const s of screens) s.update(dt, portals.world === s.world);
     renderer.shadowMap.needsUpdate = true;
     ao.strength = intro ? intro.aoStrength : 1;
     portals.render(scene, camera);
