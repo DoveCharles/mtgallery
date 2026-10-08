@@ -168,7 +168,7 @@ async function start() {
       button,
       logo,
       onPress: () => {
-        renderer.domElement.requestPointerLock()?.catch?.(() => {});
+        renderer.domElement.requestPointerLock?.()?.catch?.(() => {});
         sfx.play('drop');
       },
       onLanded: () => (landed = true),
@@ -221,7 +221,7 @@ async function start() {
   // After the intro (or after Esc), clicking the scene captures the mouse again.
   renderer.domElement.addEventListener('click', () => {
     if (!intro && !keypads?.busy && document.pointerLockElement !== renderer.domElement) {
-      renderer.domElement.requestPointerLock()?.catch?.(() => {});
+      renderer.domElement.requestPointerLock?.()?.catch?.(() => {});
     }
   });
 

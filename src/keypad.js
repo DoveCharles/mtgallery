@@ -449,7 +449,7 @@ export class KeypadSystem {
 
   // Back to the player's own view. Called from a click, so the mouse can be recaptured.
   leave() {
-    this.dom.requestPointerLock()?.catch?.(() => {});
+    this.dom.requestPointerLock?.()?.catch?.(() => {});
     this.active.setHover(null);
     this.dom.style.cursor = '';
     this.hoverKey = null;
