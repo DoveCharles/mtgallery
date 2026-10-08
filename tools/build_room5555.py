@@ -16,6 +16,9 @@ clear, mostly transparent surfaces instead. The .blend itself is left untouched.
 The "Card" mesh (Left room) is the template for the sentence cards: the game lays one
 card per line of public/sentences.txt over the faces of the Room mesh's "Floor" vertex
 group, copied out here into a `cardarea` mesh (see src/cards.js).
+
+Objects in UNIFORM are exported with every face in one material (the Ceiling had a
+leftover face in another).
 """
 import bpy
 import bmesh
@@ -28,6 +31,7 @@ VARIANTS = {"Left": "room5555-left", "Right": "room5555-right"}
 PORTAL_MATERIAL = "PortalFace"
 GLASS_ALPHA = 0.15
 CARD_FLOOR_GROUP = "Floor"  # vertex group on the Room mesh: the faces the cards are spread over
+UNIFORM = {"Ceiling": "Material.003"}  # objects exported all in one material (the walls')
 
 
 def cut_portal():
@@ -110,6 +114,19 @@ def tag_cards(keep):
     bpy.data.collections[keep].objects.link(area)
 
 
+def uniform_materials():
+    """Every face of each UNIFORM object in its one material (leftover slots ignored)."""
+    for name, material in UNIFORM.items():
+        o = bpy.data.objects.get(name)
+        if not o:
+            continue
+        index = next((i for i, s in enumerate(o.material_slots) if s.material and s.material.name == material), None)
+        if index is None:
+            raise SystemExit(f'{name} has no "{material}" material slot')
+        for p in o.data.polygons:
+            p.material_index = index
+
+
 def build(keep):
     bpy.ops.wm.open_mainfile(filepath=BLEND)
     for name in VARIANTS:
@@ -118,6 +135,7 @@ def build(keep):
                 bpy.data.objects.remove(o)
     cut_portal()
     convert_glass()
+    uniform_materials()
     tag_cards(keep)
 
     # Everything under one scaled root (scaling the objects themselves would change
