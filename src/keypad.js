@@ -313,7 +313,7 @@ export class KeypadSystem {
   active = null;
   time = 0;
 
-  // codes: { '5555': room, ... }; onOpen(door, room) when one is entered.
+  // codes: { '5555': room, ... } (room is passed on as is); onOpen(door, room) when one is entered.
   constructor({ root, camera, dom, player, envMap, codes, onOpen, onEnter, onLeave }) {
     this.codes = codes;
     this.onOpen = onOpen;

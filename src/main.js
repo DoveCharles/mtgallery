@@ -27,10 +27,12 @@ const FLOOR_FADE = 2.5; // seconds
 const SKY_LIGHT = 0.08; // the Sky shader is very bright HDR
 
 // Keypad codes and the rooms they open (public/levels/<room>.glb, entered through its
-// "Entrance" portal). Rooms share the scene with the starting area, each moved out of
-// the way, and are lit by their own lights only (see setWorld).
-const ROOMS = { 5555: 'test' };
-const ROOM_SPACING = new THREE.Vector3(1000, -40, 0);
+// "Entrance" portal): one room for the code, or one per door (by the door's mesh name).
+// Rooms share the scene with the starting area, each moved out of the way, and are lit
+// by their own lights only (see setWorld).
+const ROOMS = { 5555: { DoorLeft: 'room5555-left', DoorRight: 'room5555-right' } };
+const roomBehind = (door, room) => (typeof room === 'string' ? room : room[door.mesh.name]);
+const ROOM_SPACING = new THREE.Vector3(1000, 0, 0); // level with the start: player.js respawns anyone below y -50
 
 softShadows();
 
@@ -89,7 +91,7 @@ async function start() {
   const level = await loadLevel(`/levels/${levelName}.glb`, scene, (e) => {
     if (e.total) status.textContent = `Loading… ${Math.round((e.loaded / e.total) * 100)}%`;
   }, isMovingPart, isStart ? { world: 'start' } : {});
-  const roomNames = isStart ? [...new Set(Object.values(ROOMS))] : [];
+  const roomNames = isStart ? [...new Set(Object.values(ROOMS).flatMap((r) => (typeof r === 'string' ? r : Object.values(r))))] : [];
   const rooms = await Promise.all(
     roomNames.map((name, i) =>
       loadLevel(`/levels/${name}.glb`, scene, null, undefined, { world: name, offset: ROOM_SPACING.clone().multiplyScalar(i + 1) }),
@@ -147,7 +149,7 @@ async function start() {
       player,
       envMap: new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture,
       codes: ROOMS,
-      onOpen: (door, room) => portals.connect(`door${keypads.doors.indexOf(door)}`, `${room}/Entrance`),
+      onOpen: (door, room) => portals.connect(`door${keypads.doors.indexOf(door)}`, `${roomBehind(door, room)}/Entrance`),
       onEnter: () => (crosshair.hidden = true),
       onLeave: () => (crosshair.hidden = false),
     });

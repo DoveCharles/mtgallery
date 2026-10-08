@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "level:test": "\"${BLENDER:-/Applications/Blender 2.app/Contents/MacOS/Blender}\" -b --python tools/build_test_level.py",
+    "level:5555": "\"${BLENDER:-/Applications/Blender 2.app/Contents/MacOS/Blender}\" -b --python tools/build_room5555.py",
     "level:start": "\"${BLENDER:-/Applications/Blender 2.app/Contents/MacOS/Blender}\" -b blender/StartingArea.blend --python tools/build_start.py"
   },
   "dependencies": {
