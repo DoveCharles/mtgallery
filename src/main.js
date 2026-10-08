@@ -11,6 +11,7 @@ import { Bloom } from './bloom.js';
 import { softShadows } from './shadows.js';
 import { addCards } from './cards.js';
 import { addSentenceScreens } from './screens.js';
+import { applyShadeZones } from './shade.js';
 
 const overlay = document.getElementById('overlay');
 const status = document.getElementById('status');
@@ -27,10 +28,10 @@ document.body.prepend(renderer.domElement);
 
 const FLOOR_FADE = 2.5; // seconds
 const SKY_LIGHT = 0.08; // the Sky shader is very bright HDR
-const BOUNCE_LIGHT = 0.9;
-// Worlds in shadow: no sun, and only this much of the sky and bounce light, so the
-// sentence screens (lit by area lights, see screens.js) are what lights the room.
-const SHADE = { 'room5555-left': 0.06 };
+// Rooms in shadow: in these worlds, everything under the named ceiling gets only `light`
+// of the sky and bounce light (see shade.js), so the sentence screens (lit by area
+// lights, see screens.js) are what lights it.
+const SHADE = { 'room5555-left': { under: 'Ceiling', light: 0.06 } };
 
 // Keypad codes and the rooms they open (public/levels/<room>.glb, entered through its
 // "Entrance" portal): one room for the code, or one per door (by the door's mesh name).
@@ -75,9 +76,8 @@ function addSky() {
     sky.position.setFromMatrixPosition(cam.matrixWorld);
     sky.updateMatrixWorld();
   };
-  const bounce = new THREE.HemisphereLight(0xf2f0ea, 0x9a9a9a, BOUNCE_LIGHT); // a little bounce from the ground
+  const bounce = new THREE.HemisphereLight(0xf2f0ea, 0x9a9a9a, 0.9); // a little bounce from the ground
   scene.add(bounce);
-  sky.userData.bounce = bounce;
 
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.BasicShadowMap; // filtered by softShadows()
@@ -134,20 +134,21 @@ async function start() {
     // Each world keeps its own sun and lights; the others' are switched off while it's drawn.
     const worldLights = { start: [addSun(level.root, 4096)] };
     rooms.forEach((room, i) => {
-      worldLights[roomNames[i]] = SHADE[roomNames[i]] === undefined ? [addSun(room.root, 2048)] : [];
+      worldLights[roomNames[i]] = [addSun(room.root, 2048)];
       room.root.traverse((o) => o.isLight && worldLights[roomNames[i]].push(o));
     });
     for (const l of Object.values(worldLights).flat()) l.userData.intensity = l.intensity;
-    const { bounce } = sky.userData;
     setWorld = (world) => {
       for (const [name, lights] of Object.entries(worldLights)) {
         for (const l of lights) l.intensity = name === world ? l.userData.intensity : 0;
       }
-      const shade = SHADE[world] ?? 1;
-      scene.environmentIntensity = SKY_LIGHT * shade;
-      bounce.intensity = BOUNCE_LIGHT * shade;
     };
     setWorld.lights = worldLights;
+    rooms.forEach((room, i) => {
+      const shade = SHADE[roomNames[i]];
+      const ceiling = shade && room.root.getObjectByName(shade.under);
+      if (ceiling) applyShadeZones(room.root, [ceiling], shade.light);
+    });
 
     player.enabled = false;
     intro = new Intro({
