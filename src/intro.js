@@ -123,6 +123,15 @@ export class Intro {
     return this.state !== 'done';
   }
 
+  // How much ambient occlusion to draw. None on the title: seen from that high up, the
+  // button slab and the M/T would cast soft grey halos onto the white ground. It comes in
+  // over the end of the drop, once the view is close to ordinary perspective.
+  get aoStrength() {
+    if (this.state === 'title') return 0;
+    if (this.state === 'drop') return smooth(THREE.MathUtils.clamp((this.time / DROP_TIME - 0.6) / 0.4, 0, 1));
+    return 1;
+  }
+
   resize() {
     if (this.state === 'title') this.pose(0);
   }

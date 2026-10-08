@@ -18,6 +18,7 @@ const THICKNESS = 3;
 
 export class AmbientOcclusion {
   enabled = true;
+  strength = 1; // 0..1, scales INTENSITY (the intro fades it in)
   hidden = []; // objects left out of the occlusion (portal screens)
 
   constructor(renderer, scene, camera) {
@@ -45,7 +46,8 @@ export class AmbientOcclusion {
   // Darkens what `camera` has just drawn into `target` (null: the screen), only within
   // `scissor` (a pixel Vector4) if given.
   render(camera = this.camera, target = null, scissor = null) {
-    if (!this.enabled) return;
+    if (!this.enabled || this.strength <= 0) return;
+    this.pass.blendMaterial.uniforms.intensity.value = INTENSITY * this.strength;
     const renderer = this.renderer;
     const pass = this.pass;
     const targets = [pass.normalRenderTarget, pass.gtaoRenderTarget, pass.pdRenderTarget];

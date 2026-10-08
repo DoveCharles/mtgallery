@@ -225,6 +225,7 @@ async function start() {
     }
 
     renderer.shadowMap.needsUpdate = true;
+    ao.strength = intro ? intro.aoStrength : 1;
     portals.render(scene, camera);
     renderer.render(scene, camera);
     ao.render();
