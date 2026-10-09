@@ -323,6 +323,29 @@ async function start() {
     bloom.render();
   });
 
+  // DEBUG (remove before the final version): 5 / 6 skip the intro and put the player in
+  // room 5555 left / right, just inside its entrance, with the door behind them open.
+  const DEBUG_ROOMS = { Digit5: 'room5555-left', Digit6: 'room5555-right', Numpad5: 'room5555-left', Numpad6: 'room5555-right' };
+  addEventListener('keydown', (e) => {
+    const room = DEBUG_ROOMS[e.code];
+    const entrance = room && portals.byId.get(`${room}/Entrance`);
+    if (!entrance || keypads?.busy) return;
+    intro?.skip();
+    const door = keypads?.doors.find((d) => roomBehind(d, ROOMS[5555]) === room);
+    if (door) {
+      door.open();
+      keypads.onOpen(door, ROOMS[5555]);
+    }
+    const c = entrance.frame.getWorldPosition(new THREE.Vector3());
+    player.position.copy(c).addScaledVector(entrance.normal, 1.5).setY(c.y - entrance.height / 2);
+    player.velocity.set(0, 0, 0);
+    player.yaw = Math.atan2(-entrance.normal.x, -entrance.normal.z);
+    player.pitch = 0;
+    portals.world = room;
+    setWorld?.(room);
+    renderer.domElement.requestPointerLock?.()?.catch?.(() => {});
+  });
+
   if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, bloom, intro: () => intro, keypads: () => keypads, sfx };
 }
 

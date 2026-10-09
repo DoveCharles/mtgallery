@@ -125,6 +125,23 @@ export class Intro {
     return this.state !== 'done';
   }
 
+  // DEBUG (remove before the final version): jump to the end, as if the drop had played.
+  skip() {
+    if (this.state === 'done') return;
+    this.button.removeFromParent();
+    this.dom.style.cursor = '';
+    const cam = this.camera;
+    cam.fov = this.playFov;
+    cam.near = this.playNear;
+    cam.far = this.playFar;
+    cam.updateProjectionMatrix();
+    this.state = 'done';
+    this.player.pitch = 0;
+    this.player.enabled = true;
+    this.onLanded?.();
+    this.onDone?.();
+  }
+
   // How much ambient occlusion to draw. None on the title: seen from that high up, the
   // button slab and the M/T would cast soft grey halos onto the white ground. It comes in
   // over the end of the drop, once the view is close to ordinary perspective.
