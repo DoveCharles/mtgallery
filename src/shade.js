@@ -7,16 +7,23 @@ import * as THREE from 'three';
 // Direct light (the sun, which the ceiling already shadows, and area lights) is untouched.
 // The zones are shared by every patched material (the worlds are far apart, and some
 // materials are shared between them).
+// A void (see addVoid) is a wall that shows no light at all: inside its box, surfaces
+// facing out of the wall are pure black.
 
 const FEATHER = 0.25; // m
 const MAX_ZONES = 4;
+const MAX_VOIDS = 2;
 
 const uniforms = {
   shadeMin: { value: Array.from({ length: MAX_ZONES }, () => new THREE.Vector3(1e9, 1e9, 1e9)) },
   shadeMax: { value: Array.from({ length: MAX_ZONES }, () => new THREE.Vector3(-1e9, -1e9, -1e9)) },
   shadeK: { value: Array(MAX_ZONES).fill(1) },
+  voidMin: { value: Array.from({ length: MAX_VOIDS }, () => new THREE.Vector3(1e9, 1e9, 1e9)) },
+  voidMax: { value: Array.from({ length: MAX_VOIDS }, () => new THREE.Vector3(-1e9, -1e9, -1e9)) },
+  voidFacing: { value: Array.from({ length: MAX_VOIDS }, () => new THREE.Vector3()) },
 };
 let zoneCount = 0;
+let voidCount = 0;
 const patched = new WeakSet();
 
 // Adds the zones under `objects` (`light` of the light reaches them) and patches every
@@ -31,6 +38,20 @@ export function applyShadeZones(root, objects, light) {
     zoneCount++;
   }
 
+  patchMaterials(root);
+}
+
+// Makes the surfaces in `box` (world space) that face `facing` (a world direction) pure black,
+// in the materials applyShadeZones patches.
+export function addVoid(box, facing) {
+  if (voidCount === MAX_VOIDS) return;
+  uniforms.voidMin.value[voidCount].copy(box.min);
+  uniforms.voidMax.value[voidCount].copy(box.max);
+  uniforms.voidFacing.value[voidCount].copy(facing).normalize();
+  voidCount++;
+}
+
+function patchMaterials(root) {
   root.traverse((o) => {
     if (!o.isMesh) return;
     for (const m of [o.material].flat()) {
@@ -56,6 +77,15 @@ varying vec3 vShadePos;
 uniform vec3 shadeMin[${MAX_ZONES}];
 uniform vec3 shadeMax[${MAX_ZONES}];
 uniform float shadeK[${MAX_ZONES}];
+uniform vec3 voidMin[${MAX_VOIDS}];
+uniform vec3 voidMax[${MAX_VOIDS}];
+uniform vec3 voidFacing[${MAX_VOIDS}];
+bool inVoid(vec3 p, vec3 n) {
+  for (int i = 0; i < ${MAX_VOIDS}; i++) {
+    if (all(greaterThanEqual(p, voidMin[i])) && all(lessThanEqual(p, voidMax[i])) && dot(n, voidFacing[i]) > 0.5) return true;
+  }
+  return false;
+}
 float shadeAt(vec3 p) {
   float shade = 1.0;
   for (int i = 0; i < ${MAX_ZONES}; i++) {
@@ -77,6 +107,11 @@ float shadeAt(vec3 p) {
     radiance *= shade;
   #endif
 }`,
+          )
+          .replace(
+            '#include <dithering_fragment>',
+            `if (inVoid(vShadePos, inverseTransformDirection(normal, viewMatrix))) gl_FragColor.rgb = vec3(0.0);
+#include <dithering_fragment>`,
           );
       };
       m.customProgramCacheKey = () => `${key}+shade`;

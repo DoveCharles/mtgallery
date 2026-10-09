@@ -11,7 +11,7 @@ import { Bloom } from './bloom.js';
 import { softShadows } from './shadows.js';
 import { addCards } from './cards.js';
 import { addSentenceScreens } from './screens.js';
-import { applyShadeZones } from './shade.js';
+import { applyShadeZones, addVoid } from './shade.js';
 import { addFlickeringBulb } from './bulb.js';
 import { addVideoScreen } from './video.js';
 import { woodMaterial } from './wood.js';
@@ -51,6 +51,9 @@ const GALLERY = {
   frames: { objects: ['WaxFrame', 'WaxFrame001'], margin: 0.3, out: 2.5, intensity: 70, near: 2.5, far: 11, ease: 1.5 },
   covers: { material: 'WaxCover', reveal: 3, hide: 3.5, fade: 2.5 },
 };
+// Walls that are pure black (see addVoid in shade.js): in each world, the wall the named screen
+// hangs on, all along under the ceiling (its doorways stay as they are).
+const BLACK_WALLS = { 'room5555-right': { screen: 'Vid', under: 'Ceiling' } };
 
 // Keypad codes and the rooms they open (public/levels/<room>.glb, entered through its
 // "Entrance" portal): one room for the code, or one per door (by the door's mesh name).
@@ -315,6 +318,24 @@ function squareSpot(from, corners, { intensity, colour = 0xfff3e2 }) {
   return light;
 }
 
+// The wall behind `screen`, under `ceiling`, as a void: its face (just round the screen's plane,
+// facing into the room) from the floor up to the ceiling, across the ceiling's whole width.
+function blackWall(screen, ceiling) {
+  const s = new THREE.Box3().setFromObject(screen);
+  const room = new THREE.Box3().setFromObject(ceiling);
+  const size = s.getSize(new THREE.Vector3());
+  const axis = size.x < size.z ? 'x' : 'z'; // the screen's thin side: across the wall
+  const plane = s.getCenter(new THREE.Vector3())[axis];
+  const facing = new THREE.Vector3();
+  facing[axis] = Math.sign(room.getCenter(new THREE.Vector3())[axis] - plane);
+  const box = room.clone();
+  box.min.y = -1e4;
+  box.max.y = room.min.y + 0.05;
+  box.min[axis] = plane - 0.2;
+  box.max[axis] = plane + 0.2;
+  addVoid(box, facing);
+}
+
 // Room 5555 (right)'s spotlights (see GALLERY), and an update for the frames' to brighten as
 // the player comes up to them.
 function addGallerySpots(room) {
@@ -499,6 +520,9 @@ async function start() {
       const shade = SHADE[roomNames[i]];
       const ceiling = shade && room.root.getObjectByName(shade.under);
       if (ceiling) applyShadeZones(room.root, [ceiling], shade.light);
+      const black = BLACK_WALLS[roomNames[i]];
+      const screen = black && room.root.getObjectByName(black.screen);
+      if (screen) blackWall(screen, room.root.getObjectByName(black.under));
     });
 
     player.enabled = false;
