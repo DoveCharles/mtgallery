@@ -611,7 +611,7 @@ async function start() {
   const galleryRoom = rooms[roomNames.indexOf(GALLERY.world)];
   const gallery = galleryRoom && addGallerySpots(galleryRoom.root);
   for (const l of gallery?.lights ?? []) setWorld?.lights[GALLERY.world]?.push(l);
-  const videos = [level, ...rooms].map((l, i) => addVideoScreen(l, listener, worldNames[i])).filter(Boolean);
+  const videos = [level, ...rooms].map((l, i) => addVideoScreen(l, worldNames[i])).filter(Boolean);
   const portals = new PortalSystem(renderer, scene, [...level.portals, ...rooms.flatMap((r) => r.portals), ...(keypads?.portalDefs ?? [])], {
     world: isStart ? 'start' : undefined,
     setWorld,

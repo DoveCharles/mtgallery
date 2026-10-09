@@ -6,7 +6,8 @@ import * as THREE from 'three';
 // stutters: a burst of quick cut-outs and catches, now and then a longer blackout that it
 // sputters back out of. The filament heats faster than it cools, and the glass follows more
 // slowly still. The brightness drives the filament's glow, the glass's, a point light and
-// the buzz's volume, and every time the bulb comes back on (crosses ON) it clinks.
+// the buzz's volume, and every time the bulb comes back on (crosses ON) it clinks. The light
+// (and the glass) is orange, shimmering slowly between deep orange and gold, iridescent.
 
 const STEADY = [0.6, 4]; // s the bulb burns between stutters
 const BURST = [2, 7]; // cut-outs in a stutter
@@ -21,9 +22,11 @@ const GLASS_EASE = 6;
 
 const FILAMENT_COLOR = new THREE.Color(1, 0.5913, 0.1569);
 const FILAMENT_GLOW = 220; // emissive strength at full (as exported from Blender)
-const GLASS_COLOR = new THREE.Color(1, 0.4132, 0);
 const GLASS_GLOW = 0.4; // emissive intensity at full
-const LIGHT_COLOR = new THREE.Color(1, 0.6264, 0.1686);
+// The light's colour, as HSL: amber orange, its hue drifting by up to SHIMMER either way
+// (deeper orange to gold) over a few seconds.
+const LIGHT_HSL = { h: 0.095, s: 0.95, l: 0.6 };
+const SHIMMER = 0.025;
 const LIGHT = 300; // candela at full (the bulb is ~10 m across)
 const LIGHT_RANGE = 40; // m
 
@@ -57,15 +60,14 @@ export async function addFlickeringBulb(level, listener, world) {
   }
   const glass = bulb.isMesh ? bulb : null;
   if (glass) {
-    glass.material = glass.material.clone();
-    glass.material.emissive.copy(GLASS_COLOR);
+    glass.material = glass.material.clone(); // its glow's colour is set as it shimmers
   }
   // The bulb's own parts would block its light.
   bulb.traverse((o) => o.isMesh && (o.castShadow = false));
 
   level.root.updateMatrixWorld(true);
   const center = new THREE.Box3().setFromObject(filament).getCenter(new THREE.Vector3());
-  const light = new THREE.PointLight(LIGHT_COLOR, 0, LIGHT_RANGE, 2);
+  const light = new THREE.PointLight(0xffffff, 0, LIGHT_RANGE, 2);
   light.userData.intensity = 0;
   light.position.copy(center);
   const group = new THREE.Group();
@@ -148,6 +150,9 @@ export async function addFlickeringBulb(level, listener, world) {
       if (glass) glass.material.emissiveIntensity = glassBrightness * GLASS_GLOW;
       // The world switch (main.js) sets every light from userData.intensity.
       light.userData.intensity = brightness * LIGHT;
+      const hue = LIGHT_HSL.h + SHIMMER * (0.6 * Math.sin(time * 0.9) + 0.4 * Math.sin(time * 2.3 + 1.7));
+      light.color.setHSL((hue + 1) % 1, LIGHT_HSL.s, LIGHT_HSL.l, THREE.SRGBColorSpace);
+      if (glass) glass.material.emissive.setHSL((hue + 1) % 1, 1, 0.55, THREE.SRGBColorSpace);
 
       if (buzz) {
         if (here && listener.context.state === 'running' && !buzz.isPlaying) buzz.play();
