@@ -77,6 +77,9 @@ const NO_GROUND = new Set(['bedroom-open']);
 // in the closed bedroom's Star corridor, with the white of its walls in the open one's.
 const SLIT_MASKED = { 'bedroom-closed/Exit': 'space', 'bedroom-open/Exit': 'wall' };
 const WALL_MATERIAL = 'Material'; // the open bedroom corridor's white
+const BARE_COLOUR = 0xe7e7e7; // the bedrooms' walls'
+// Half the width of the Dierama's face around a slit (each slit is in the middle of one).
+const SLIT_FACE = 1.6;
 // Room i sits at (1000 * (i + 1), ROOM_HEIGHT, 0): raised clear of the intro's white
 // ground plane (y 0) so its floor doesn't fight with it and light can get in from outside.
 const ROOM_SPACING = 1000;
@@ -205,6 +208,7 @@ async function start() {
   );
 
   const roomConcrete = {}; // by side
+  const bare = {}; // by side
   const spaceMeshes = [];
   let carpet = null;
   let starry = null;
@@ -213,6 +217,12 @@ async function start() {
       if (o.isMesh && o.material.name === CONCRETE) {
         const { side } = o.material;
         o.material = roomConcrete[side] ??= Object.assign(concreteMaterial(ROOM_CONCRETE_REPEAT), { side });
+      }
+      // Meshes with no material in Blender (the beds, the ramps) get glTF's default, which is
+      // fully metallic, so they'd mirror the sky: matte white instead, as the walls.
+      if (o.isMesh && o.material.name === '' && o.material.metalness === 1) {
+        const { side } = o.material;
+        o.material = bare[side] ??= new THREE.MeshStandardMaterial({ name: 'Bare', color: BARE_COLOUR, roughness: 0.85, side });
       }
     });
     const block = room.root.getObjectByName(WOOD[0]);
@@ -337,6 +347,15 @@ async function start() {
     afterView: (cam, target, level, scissor, portal) => level === 0 && ao.renderFactor(cam, scissor, portal),
   });
   for (const [a, b] of LINKS) if (portals.byId.has(a) && portals.byId.has(b)) portals.connect(a, b);
+  // Funnels into the slits, and into their exits (which show only the slit, see slitMask,
+  // and lead to it: an exit's offset from its centre is kept on the far side).
+  for (const [a, b] of LINKS) {
+    const slit = portals.byId.get(a);
+    const exit = portals.byId.get(b);
+    if (!slit?.linked || !exit) continue;
+    player.addFunnel(slit.frame, slit.width, slit.height, { face: SLIT_FACE });
+    if (b in SLIT_MASKED) player.addFunnel(exit.frame, slit.width, slit.height, { face: exit.width / 2 });
+  }
   for (const [id, kind] of Object.entries(SLIT_MASKED)) {
     const exit = portals.byId.get(id);
     const slit = exit?.linked;

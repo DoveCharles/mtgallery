@@ -11,6 +11,9 @@ const _delta = new THREE.Vector3();
 const _move = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 const _rot = new THREE.Matrix3();
+const _prevEye = new THREE.Vector3();
+const _a = new THREE.Vector3();
+const _b = new THREE.Vector3();
 const JOY_RADIUS = 50; // px the knob can travel from the base's centre
 
 // First-person walker: pointer-lock mouse look (or the arrow keys), WASD, capsule-vs-level collision.
@@ -34,6 +37,7 @@ export class Player {
   onGround = false;
   enabled = true; // false while a cutscene owns the camera
   blockers = []; // Box3s that move (doors), checked on top of the static collider
+  funnels = []; // narrow openings the player is steered into (see addFunnel)
 
   constructor(camera, dom, collider) {
     this.camera = camera;
@@ -155,8 +159,10 @@ export class Player {
 
     this.eyeHeight += (this.eyeTarget - this.eyeHeight) * (1 - Math.exp(-12 * dt));
 
+    this.getEye(_prevEye);
     const step = dt / PHYSICS_STEPS;
     for (let i = 0; i < PHYSICS_STEPS; i++) this.step(step, _move);
+    for (const f of this.funnels) this.funnel(f, _prevEye);
 
     if (this.position.y < -50 && this.spawnPoint) this.spawnAt(this.spawnPoint);
   }
@@ -204,6 +210,47 @@ export class Player {
     } else {
       this.velocity.set(0, 0, 0);
     }
+  }
+
+  // A narrow opening (a slit portal) in a face, centred on `frame` (+z out of the face, y up):
+  // walking at it from within `reach` in front and `face` to either side, the eye's offset
+  // from the opening (sideways, and in height) shrinks in step with the distance left, so
+  // it's gone on arrival: an invisible funnel. Coming in too flat to line up in time, the
+  // face holds the eye `stand` off it and the push slides it along to the opening.
+  addFunnel(frame, width, height, { face, reach = 1.5, stand = 0.15 }) {
+    frame.updateMatrixWorld();
+    this.funnels.push({
+      toLocal: frame.matrixWorld.clone().invert(),
+      toWorld: frame.matrixWorld.clone(),
+      halfWidth: width / 2 - 0.06, // how far off centre the eye may go through
+      halfHeight: height / 2 - 0.1,
+      face,
+      reach,
+      stand,
+    });
+  }
+
+  funnel(f, prevEye) {
+    const a = _a.copy(prevEye).applyMatrix4(f.toLocal);
+    const b = this.getEye(_b).applyMatrix4(f.toLocal);
+    const left = a.z - f.stand;
+    const progress = a.z - b.z;
+    if (left <= 0 || left > f.reach || progress <= 0 || Math.abs(a.x) > f.face || Math.abs(a.y) > 2) return;
+    // Shift each offset beyond the opening by its share of the distance covered, but at
+    // most twice that (a funnel's slope), so nothing jumps.
+    const ease = (offset, half) => {
+      const over = Math.abs(offset) - half;
+      if (over <= 0) return 0;
+      return -Math.sign(offset) * Math.min(over * Math.min(1, progress / left), progress * 2);
+    };
+    b.x += ease(b.x, f.halfWidth);
+    const lift = ease(b.y, f.halfHeight);
+    this.eyeHeight += lift;
+    b.y += lift;
+    if (b.z < f.stand && (Math.abs(b.x) > f.halfWidth + 0.01 || Math.abs(b.y) > f.halfHeight + 0.01)) b.z = f.stand;
+    b.applyMatrix4(f.toWorld);
+    this.position.x = b.x;
+    this.position.z = b.z;
   }
 
   // Sideways push out of an upright box (a door), if the capsule overlaps it.
