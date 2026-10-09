@@ -35,6 +35,7 @@ renderer.toneMapping = THREE.NeutralToneMapping;
 document.body.prepend(renderer.domElement);
 
 const FLOOR_FADE = 2.5; // seconds
+const DROP_LATE = 1.5; // s: on a slow first load the drop's sound may still start this far into the drop
 const SKY_LIGHT = 0.08; // the Sky shader is very bright HDR
 // Rooms in shadow: in these worlds, everything under the named ceiling gets only `light`
 // of the sky and bounce light (see shade.js), so the sentence screens (lit by area
@@ -412,6 +413,13 @@ function addGallerySpots(room) {
 
 async function start() {
   const isStart = levelName === 'start';
+  // Before the levels, so the sounds download alongside them and are in by the title.
+  const listener = new THREE.AudioListener();
+  camera.add(listener);
+  const resumeAudio = () => listener.context.state !== 'running' && listener.context.resume();
+  addEventListener('pointerdown', resumeAudio);
+  addEventListener('keydown', resumeAudio);
+  const sfx = isStart ? new Sfx(listener) : null;
   const level = await loadLevel(`/levels/${levelName}.glb`, scene, (e) => {
     if (e.total) status.textContent = `Loading… ${Math.round((e.loaded / e.total) * 100)}%`;
   }, isMovingPart, isStart ? { world: 'start' } : {});
@@ -506,12 +514,6 @@ async function start() {
   const player = new Player(camera, renderer.domElement, buildCollider([level, ...rooms]));
   if (level.spawn) player.spawnAt(level.spawn);
 
-  const listener = new THREE.AudioListener();
-  camera.add(listener);
-  const resumeAudio = () => listener.context.state !== 'running' && listener.context.resume();
-  addEventListener('pointerdown', resumeAudio);
-  addEventListener('keydown', resumeAudio);
-  const sfx = isStart ? new Sfx(listener) : null;
   let landed = false; // the drone comes in once the intro's drop is over
 
   let intro = null;
@@ -566,7 +568,7 @@ async function start() {
       logo,
       onPress: () => {
         renderer.domElement.requestPointerLock?.()?.catch?.(() => {});
-        sfx.play('drop');
+        sfx.play('drop', { late: DROP_LATE });
       },
       onLanded: () => (landed = true),
       onDone: () => {

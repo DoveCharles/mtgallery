@@ -4,8 +4,9 @@ import * as THREE from 'three';
 // re-encoded to AAC): the drop, the corridor drone, footsteps, the keypad's clicks and
 // verdicts and the doors. One-shots play flat, or from an object when one is given: the keypad's
 // sounds come from the keypad (each click from its key), the doors' from the door.
-// Sounds still loading when they are due are skipped, as are any before the first click
-// has started the audio context.
+// Sounds still loading when they are due are skipped (or, given `late`, played as soon as
+// they arrive, from where they would be by then), as are any due before the first click or
+// key has started the audio context, unless that click or key is what made them due.
 // While you're in the starting area every one-shot also feeds a reverb (see corridorImpulse)
 // for its narrow concrete corridor.
 
@@ -39,6 +40,7 @@ const REVERB_FADE = 0.3; // seconds, going between the corridor and a room
 
 export class Sfx {
   buffers = {};
+  loading = {};
   drone = null;
   droneOn = false;
   stepTimer = 0;
@@ -55,9 +57,9 @@ export class Sfx {
     this.reverbOn = false;
     const loader = new THREE.AudioLoader();
     for (const [name, file] of Object.entries(FILES)) {
-      loader.loadAsync(`/audio/${file}`).then(
+      this.loading[name] = loader.loadAsync(`/audio/${file}`).then(
         (b) => (this.buffers[name] = b),
-        () => {},
+        () => null,
       );
     }
   }
@@ -66,11 +68,28 @@ export class Sfx {
     return this.listener.context.state === 'running';
   }
 
-  play(name, { at, volume = 1, rate = 1, refDistance = REF_DISTANCE } = {}) {
+  // `late`: seconds the sound may still start after it was due, if it hasn't loaded yet.
+  play(name, { at, volume = 1, rate = 1, refDistance = REF_DISTANCE, late = 0, offset = 0 } = {}) {
     const buffer = this.buffers[name];
-    if (!buffer || !this.ready) return;
+    if (!this.ready) {
+      // The first click both resumes the context and can be what sets a sound off; a sound
+      // started on the still-suspended context plays once it's running.
+      if (!navigator.userActivation?.isActive) return;
+      this.listener.context.resume();
+    }
+    if (!buffer) {
+      if (late > 0) {
+        const due = performance.now();
+        this.loading[name]?.then((b) => {
+          const behind = (performance.now() - due) / 1000;
+          if (b && behind < late) this.play(name, { at, volume, rate, refDistance, offset: offset + behind * rate });
+        });
+      }
+      return;
+    }
     const sound = at ? new THREE.PositionalAudio(this.listener) : new THREE.Audio(this.listener);
     sound.setBuffer(buffer).setVolume(volume).setPlaybackRate(rate);
+    sound.offset = offset;
     if (at) {
       sound.setRefDistance(refDistance);
       at.add(sound);
