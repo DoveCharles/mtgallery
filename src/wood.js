@@ -125,7 +125,7 @@ export function woodMaterial({
 
 // Stained quarter-sawn oak (room 5555's frames, after a photo of the real ones): boards
 // laid flat, one above another, each showing the growth rings edge-on as fine straight lines
-// along it, with the oak's ray fleck rippling across them in patches, lighter flakes outlined
+// along it, with the oak's ray fleck rippling along them in patches, faint lighter flakes outlined
 // darker. All in world space (a metre is a metre), so separate pieces don't line up like one
 // block.
 const OAK = /* glsl */ `
@@ -165,24 +165,31 @@ float oakFbm(vec3 p) {
 vec4 oakAt(vec2 g) {
   float board = floor(g.x / oakBoard);
   float bh = oakHash(vec3(board, 1.3, 2.7));
-  // The rings, edge on: fine lines along the grain, wavering a little, blurred to an
-  // average where they'd be finer than a pixel.
+  // The rings, edge on: crisp lines along the grain (each year's latewood, a few mm apart,
+  // some years darker), wavering a little, with the oak's pores as short dark ticks along
+  // them. Lines, not stretched noise, which would smear. Each blurs to its average where it
+  // would be finer than a pixel.
   float x = g.x + (oakFbm(vec3(g.x * 4.0, g.y * 0.7, bh * 10.0)) - 0.5) * 0.03;
-  float ring = oakNoise(vec3(x * 120.0, g.y * 1.5, bh * 20.0));
-  ring = smoothstep(0.25, 0.75, ring);
-  ring = mix(ring, 0.5, smoothstep(0.4, 1.2, fwidth(x * 120.0)));
-  // Ray fleck: the contours of a field that changes faster along the grain than across,
-  // so they ripple across it as thin wavy lines round faintly lighter flakes; in patches.
-  float f = oakFbm(vec3(g.x * 9.0, g.y * 26.0, bh * 30.0 + 5.0)) * 5.0;
+  float r = x * 100.0 + oakFbm(vec3(x * 8.0, g.y * 1.5, bh * 20.0)) * 5.0;
+  float year = oakHash(vec3(floor(r), bh * 13.0, 5.1));
+  float wide = oakHash(vec3(floor(r), bh * 7.0, 9.3));
+  float ring = smoothstep(mix(0.4, 0.85, wide), 0.92, fract(r)) * (1.0 - smoothstep(0.92, 1.0, fract(r)));
+  ring *= 0.3 + 0.7 * year;
+  ring = mix(ring, 0.18, smoothstep(0.3, 0.8, fwidth(r)));
+  float pore = smoothstep(0.7, 0.9, oakNoise(vec3(x * 900.0, g.y * 60.0, bh * 40.0)));
+  pore *= 1.0 - smoothstep(0.3, 0.8, fwidth(x * 900.0));
+  // Ray fleck: the contours of a field that changes faster across the grain than along,
+  // so they lie along it as thin wavy lines round faintly lighter flakes; in patches.
+  float f = oakFbm(vec3(g.x * 26.0, g.y * 9.0, bh * 30.0 + 5.0)) * 5.0;
   float band = fract(f);
   float edge = 1.0 - smoothstep(0.0, max(0.09, fwidth(f) * 1.5), min(band, 1.0 - band));
   edge *= 1.0 - smoothstep(0.5, 1.0, fwidth(f)); // too fine to see: gone
-  float patches = smoothstep(0.4, 0.62, oakFbm(vec3(g.x * 6.0, g.y * 2.5, bh * 7.0)));
+  float patches = smoothstep(0.4, 0.62, oakFbm(vec3(g.x * 6.0, g.y * 3.0, bh * 7.0)));
   float flake = smoothstep(0.3, 0.7, band) * patches;
-  oakHeight = ring * 0.4 + flake * 0.3 - edge * patches * 0.3;
-  vec3 colour = mix(oakMid, oakDark, ring * 0.7);
-  colour = mix(colour, oakLight, flake * 0.45);
-  colour = mix(colour, oakDark, edge * patches * 0.55);
+  oakHeight = ring * 0.4 + flake * 0.15 - edge * patches * 0.15 - pore * 0.3;
+  vec3 colour = mix(oakMid, oakDark, 0.22 + ring * 0.7 + pore * 0.3);
+  colour = mix(colour, oakLight, flake * 0.2);
+  colour = mix(colour, oakDark, edge * patches * 0.25);
   colour *= (0.85 + 0.3 * bh) * (0.85 + 0.3 * oakFbm(vec3(g.x * 2.0, g.y * 0.4, 3.0)));
   return vec4(colour, mix(0.5, 0.62, ring) - flake * 0.08);
 }
