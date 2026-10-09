@@ -20,6 +20,9 @@ group, copied out here into a `cardarea` mesh (see src/cards.js).
 The wax frames' "Cover" vertex group (the covers over the scans) is exported in a material
 of its own, COVER_MATERIAL, so the game can fade the covers (see GALLERY in src/main.js).
 
+The wax frames' rows are each one frame repeated by an Array modifier: exported FRAMES
+long (the .blend has 6, the Unity project's rows 5), moved along to stay centred.
+
 Objects in UNIFORM are exported with every face in one material (the Ceiling had a
 leftover face in another).
 """
@@ -50,6 +53,8 @@ TEXTURES = {
 }
 COVER_GROUP = "Cover"
 COVER_MATERIAL = "WaxCover"
+WAX_ROWS = ["WaxFrame", "WaxFrame.001"]
+FRAMES = 5
 # glTF can't do the wax frames' procedural walnut: a flat colour like it instead.
 FLAT = {"Material.011": (0.07, 0.045, 0.03, 1)}
 
@@ -242,6 +247,20 @@ def split_covers():
             p.material_index = index
 
 
+def wax_rows():
+    """Each WAX_ROWS row FRAMES frames long, centred where it was."""
+    for name in WAX_ROWS:
+        o = bpy.data.objects.get(name)
+        array = o and next((m for m in o.modifiers if m.type == "ARRAY"), None)
+        if not array:
+            raise SystemExit(f"{name} has no Array modifier")
+        xs = [v.co.x for v in o.data.vertices]
+        step = array.relative_offset_displace[0] * (max(xs) - min(xs))  # local x, frame to frame
+        shift = (array.count - FRAMES) * step / 2
+        o.location += o.matrix_world.to_3x3() @ Vector((shift, 0, 0))
+        array.count = FRAMES
+
+
 def uniform_materials():
     """Every face of each UNIFORM object in its one material (leftover slots ignored)."""
     for name, material in UNIFORM.items():
@@ -267,6 +286,8 @@ def build(keep):
     split_covers()
     convert_glass()
     uniform_materials()
+    if keep == "Right":
+        wax_rows()
     tag_cards(keep)
 
     # Everything under one scaled root (scaling the objects themselves would change
