@@ -225,8 +225,8 @@ function planarUvs(mesh) {
 }
 
 // Colours the starting area (by Blender object/material names, see tools/build_start.py)
-// and adds the black ground and the sky. Returns the button, the meshes forming the M/T
-// and the floor material (see floorMaterial).
+// and adds the black ground and the sky. Returns the button, the meshes forming the M/T,
+// the floor material (see floorMaterial) and the ground.
 export function dressStartArea(root, scene, sky) {
   const white = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   const black = new THREE.MeshBasicMaterial({ color: 0x000000 });
@@ -259,5 +259,5 @@ export function dressStartArea(root, scene, sky) {
   scene.add(ground);
 
   scene.add(sky);
-  return { button, logo, floor };
+  return { button, logo, floor, ground };
 }

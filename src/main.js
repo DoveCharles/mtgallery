@@ -66,6 +66,10 @@ const ROOM_CONCRETE_REPEAT = 1;
 const WOOD = ['Dierama', 'DieramaDoors'];
 // Meshes that show space instead of themselves (src/stars.js): the closed bedroom's Star corridor.
 const SPACE = ['Star'];
+// Worlds drawn without the black ground, so their windows show sky all the way down.
+const NO_GROUND = new Set(['bedroom-open']);
+// Exits (the far end of a LINK) masked down to their slit's opening with space (see slitMask).
+const SLIT_MASKED = ['bedroom-closed/Exit'];
 // Room i sits at (1000 * (i + 1), ROOM_HEIGHT, 0): raised clear of the intro's white
 // ground plane (y 0) so its floor doesn't fight with it and light can get in from outside.
 const ROOM_SPACING = 1000;
@@ -83,6 +87,22 @@ const camera = new THREE.PerspectiveCamera(PLAY_FOV, innerWidth / innerHeight, 0
 // through any openings). The sky itself (blurred into an environment map) lights everything
 // the sun doesn't, so shaded walls pick up a cool blue and lit ones a warm white.
 const SUN_DIR = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(40), THREE.MathUtils.degToRad(150));
+
+// Space over an exit, but for a hole the size of its slit (an exit's centre is its slit's
+// centre), so from the far side only the slit shows of the way back, as from the room.
+function slitMask(exit, slit, material) {
+  const w = exit.width / 2 + 0.02;
+  const h = exit.height / 2 + 0.02;
+  const shape = new THREE.Shape([new THREE.Vector2(-w, -h), new THREE.Vector2(w, -h), new THREE.Vector2(w, h), new THREE.Vector2(-w, h)]);
+  const sw = slit.width / 2;
+  const sh = slit.height / 2;
+  shape.holes.push(new THREE.Path([new THREE.Vector2(-sw, -sh), new THREE.Vector2(-sw, sh), new THREE.Vector2(sw, sh), new THREE.Vector2(sw, -sh)]));
+  const mask = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
+  mask.name = `SlitMask_${exit.id}`;
+  exit.frame.matrixWorld.decompose(mask.position, mask.quaternion, mask.scale);
+  mask.translateZ(0.003); // just on the near side of the screen
+  return mask;
+}
 
 function addSky() {
   const sky = new Sky();
@@ -190,9 +210,9 @@ async function start() {
   let floorReveal = 0;
   let setWorld;
   if (isStart) {
-    let button, logo;
+    let button, logo, ground;
     const sky = addSky();
-    ({ button, logo, floor } = dressStartArea(level.root, scene, sky));
+    ({ button, logo, floor, ground } = dressStartArea(level.root, scene, sky));
 
     // Each world keeps its own sun and lights; the others' are switched off while it's drawn.
     const worldLights = { start: [addSun(level.root, 4096)] };
@@ -205,6 +225,7 @@ async function start() {
       for (const [name, lights] of Object.entries(worldLights)) {
         for (const l of lights) l.intensity = name === world ? l.userData.intensity : 0;
       }
+      ground.visible = !NO_GROUND.has(world);
     };
     setWorld.lights = worldLights;
     rooms.forEach((room, i) => {
@@ -271,6 +292,14 @@ async function start() {
     afterView: (cam, target, level, scissor, portal) => level === 0 && ao.renderFactor(cam, scissor, portal),
   });
   for (const [a, b] of LINKS) if (portals.byId.has(a) && portals.byId.has(b)) portals.connect(a, b);
+  for (const id of SLIT_MASKED) {
+    const exit = portals.byId.get(id);
+    const slit = exit?.linked;
+    if (!slit) continue;
+    const mask = slitMask(exit, slit, starry ??= starsMaterial());
+    scene.add(mask);
+    spaceMeshes.push(mask);
+  }
   const doorPortals = keypads?.doors.map((_, i) => portals.byId.get(`door${i}`)) ?? [];
 
   // After the intro (or after Esc), clicking the scene captures the mouse again.
