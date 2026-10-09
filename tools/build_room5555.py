@@ -17,6 +17,9 @@ The "Card" mesh (Left room) is the template for the sentence cards: the game lay
 card per line of public/sentences.txt over the faces of the Room mesh's "Floor" vertex
 group, copied out here into a `cardarea` mesh (see src/cards.js).
 
+The wax frames' "Cover" vertex group (the covers over the scans) is exported in a material
+of its own, COVER_MATERIAL, so the game can fade the covers (see GALLERY in src/main.js).
+
 Objects in UNIFORM are exported with every face in one material (the Ceiling had a
 leftover face in another).
 """
@@ -45,6 +48,8 @@ TEXTURES = {
     "test 3 1.tiff": "wax_scan.jpg",  # downsized from Wax Scans/test 3 1.tiff
     "gettyimages-92216986-2048x2048 (2).jpg.001": "gettyimages-92216986.jpg",
 }
+COVER_GROUP = "Cover"
+COVER_MATERIAL = "WaxCover"
 # glTF can't do the wax frames' procedural walnut: a flat colour like it instead.
 FLAT = {"Material.011": (0.07, 0.045, 0.03, 1)}
 
@@ -214,6 +219,29 @@ def tag_cards(keep):
     bpy.data.collections[keep].objects.link(area)
 
 
+def split_covers():
+    """The COVER_GROUP faces of each mesh into a copy of their material, COVER_MATERIAL."""
+    for o in bpy.data.objects:
+        group = o.vertex_groups.get(COVER_GROUP) if o.type == "MESH" else None
+        if not group:
+            continue
+        me = o.data
+        inside = {v.index for v in me.vertices if any(g.group == group.index and g.weight > 0 for g in v.groups)}
+        faces = [p for p in me.polygons if all(i in inside for i in p.vertices)]
+        if not faces:
+            continue
+        index = next((i for i, m in enumerate(me.materials) if m and m.name == COVER_MATERIAL), None)
+        if index is None:  # (meshes shared between objects only need it once)
+            cover = bpy.data.materials.get(COVER_MATERIAL)
+            if not cover:
+                cover = me.materials[faces[0].material_index].copy()
+                cover.name = COVER_MATERIAL
+            me.materials.append(cover)
+            index = len(me.materials) - 1
+        for p in faces:
+            p.material_index = index
+
+
 def uniform_materials():
     """Every face of each UNIFORM object in its one material (leftover slots ignored)."""
     for name, material in UNIFORM.items():
@@ -236,6 +264,7 @@ def build(keep):
     cut_portal()
     slit_portals()
     fix_materials()
+    split_covers()
     convert_glass()
     uniform_materials()
     tag_cards(keep)

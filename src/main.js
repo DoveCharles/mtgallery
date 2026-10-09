@@ -42,11 +42,14 @@ const SHADE = { 'room5555-left': { under: 'Ceiling', light: 0.06 }, 'room5555-ri
 // one straight down on the plinth and its cube (`square` m across on the floor), and one on
 // each row of wax frames (with `margin` m round them, from `out` m in front of the wall),
 // which comes up from off `far` m from the row (short of the middle of the room, so both are
-// off there) to full at `near` m.
+// off there) to full at `near` m. The frames' covers (their WaxCover material, see
+// tools/build_room5555.py) fade right away, over `fade` s, once you're within `reveal` m of
+// the row, and come back once you're `hide` m off again.
 const GALLERY = {
   world: 'room5555-right',
   plinth: { objects: ['Plinth', 'Cube'], square: 1.8, intensity: 40 },
   frames: { objects: ['WaxFrame', 'WaxFrame001'], margin: 0.3, out: 2.5, intensity: 70, near: 2.5, far: 11, ease: 1.5 },
+  covers: { material: 'WaxCover', reveal: 3, hide: 3.5, fade: 2.5 },
 };
 
 // Keypad codes and the rooms they open (public/levels/<room>.glb, entered through its
@@ -318,7 +321,7 @@ function addGallerySpots(room) {
   const ceiling = new THREE.Box3().setFromObject(room.getObjectByName('Ceiling'));
   const top = ceiling.min.y - 0.05;
   const middle = ceiling.getCenter(new THREE.Vector3());
-  const { plinth, frames } = GALLERY;
+  const { plinth, frames, covers } = GALLERY;
 
   const stand = new THREE.Box3();
   for (const name of plinth.objects) stand.expandByObject(room.getObjectByName(name));
@@ -329,7 +332,18 @@ function addGallerySpots(room) {
   const lights = [squareSpot(new THREE.Vector3(c.x, top, c.z + 1e-3), square, plinth)];
 
   const rows = frames.objects.map((name) => {
-    const b = new THREE.Box3().setFromObject(room.getObjectByName(name)).expandByScalar(frames.margin);
+    const frame = room.getObjectByName(name);
+    const b = new THREE.Box3().setFromObject(frame).expandByScalar(frames.margin);
+    // This row's covers, in a material of their own so they fade apart from the other row's.
+    let cover = null;
+    const coverMeshes = [];
+    frame.traverse((o) => {
+      if (!o.isMesh || o.material.name !== covers.material) return;
+      // (clone() leaves out the shade zones' shader patch: carried over by hand)
+      const { onBeforeCompile, customProgramCacheKey } = o.material;
+      o.material = cover ??= Object.assign(o.material.clone(), { transparent: true, onBeforeCompile, customProgramCacheKey });
+      coverMeshes.push(o);
+    });
     const centre = b.getCenter(new THREE.Vector3());
     const facing = Math.sign(middle.z - centre.z); // the frames hang on walls across z
     const z = facing > 0 ? b.min.z + frames.margin : b.max.z - frames.margin; // the wall, behind them
@@ -337,7 +351,7 @@ function addGallerySpots(room) {
     const light = squareSpot(new THREE.Vector3(centre.x, top, z + facing * frames.out), rect, frames);
     light.userData.intensity = 0;
     lights.push(light);
-    return { light, x: centre.x, halfWidth: (b.max.x - b.min.x) / 2, z, level: 0 };
+    return { light, x: centre.x, halfWidth: (b.max.x - b.min.x) / 2, z, level: 0, cover, coverMeshes, shown: true };
   });
 
   const update = (dt, eye) => {
@@ -346,6 +360,13 @@ function addGallerySpots(room) {
       const goal = 1 - THREE.MathUtils.smoothstep(d, frames.near, frames.far);
       row.level += (goal - row.level) * Math.min(1, dt * frames.ease);
       row.light.userData.intensity = frames.intensity * row.level;
+      if (!row.cover) continue;
+      if (d < covers.reveal) row.shown = false;
+      else if (d > covers.hide) row.shown = true;
+      const m = row.cover;
+      m.opacity = THREE.MathUtils.clamp(m.opacity + (row.shown ? dt : -dt) / covers.fade, 0, 1);
+      m.depthWrite = m.opacity === 1;
+      for (const o of row.coverMeshes) o.visible = m.opacity > 0;
     }
   };
   return { lights, update };
