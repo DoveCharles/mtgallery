@@ -2,16 +2,14 @@ import * as THREE from 'three';
 
 // Space, painted on a mesh (the closed bedroom's Star corridor): every surface shows the
 // starry sky in the direction it's seen from the camera, not anything at the surface, so the
-// walls and ceiling vanish and walking down the corridor feels like walking through space,
-// with stars all round (below the horizon too). Only the floor (faces looking up) is black:
-// the ground underfoot.
+// walls, ceiling and floor vanish and walking down the corridor feels like walking through
+// space, with stars all round, underfoot too.
 // The stars are procedural (as the Unity project's ProceduralStarSk): a few layers of cells on
 // the sky, each with a chance of one star somewhere inside, drawn at least a pixel across so
 // they don't flicker.
 
 const STARS = /* glsl */ `
 varying vec3 vWorld;
-varying vec3 vWorldNormal;
 
 float starHash(vec3 p) {
   p = fract(p * vec3(0.1031, 0.1030, 0.0973));
@@ -44,11 +42,9 @@ export function starsMaterial({ side = THREE.DoubleSide } = {}) {
     toneMapped: false,
     vertexShader: /* glsl */ `
       varying vec3 vWorld;
-      varying vec3 vWorldNormal;
       void main() {
         vec4 world = modelMatrix * vec4(position, 1.0);
         vWorld = world.xyz;
-        vWorldNormal = normalize(mat3(modelMatrix) * normal);
         gl_Position = projectionMatrix * viewMatrix * world;
       }
     `,
@@ -60,8 +56,6 @@ export function starsMaterial({ side = THREE.DoubleSide } = {}) {
         vec3 colour = starLayer(dir, 40.0, 0.3, 0.0008, 1.0, px) // many faint
           + starLayer(dir, 20.0, 0.3, 0.0012, 1.6, px)
           + starLayer(dir, 8.0, 0.25, 0.002, 2.5, px); // a few bright
-        vec3 n = gl_FrontFacing ? vWorldNormal : -vWorldNormal; // towards the camera
-        if (n.y > 0.7) colour = vec3(0.0); // the floor
         gl_FragColor = vec4(colour, 1.0);
         #include <colorspace_fragment>
       }

@@ -126,6 +126,15 @@ class Portal {
     this.target = null;
   }
 
+  // Narrow the portal to a smaller opening about its centre (walking through elsewhere then
+  // does nothing, and nothing of the far side shows there).
+  resize(width, height) {
+    this.width = width;
+    this.height = height;
+    this.screen.scale.x = width;
+    this.screen.scale.y = height;
+  }
+
   link(other) {
     this.linked = other;
     this.toLinked

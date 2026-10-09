@@ -71,6 +71,8 @@ const CARPET = ['CarpetClosed', 'CarpetOpen'];
 const CARPET_TILE = 1.5; // metres per repeat
 // Meshes that show space instead of themselves (src/stars.js): the closed bedroom's Star corridor.
 const SPACE = ['Star'];
+// The window at the Star corridor's end, the only thing in it besides space (see windowMask).
+const SPACE_WINDOW = { corridor: 'Star', window: 'WindowWall' };
 // Worlds drawn without the black ground, so their windows show sky all the way down.
 const NO_GROUND = new Set(['bedroom-open']);
 // Exits (the far end of a LINK) masked down to their slit's opening (see slitMask): with space
@@ -113,6 +115,39 @@ function carpetMaterial() {
     normalMap: load('carpet_wool_nor.jpg'),
     roughness: 0.95,
   });
+}
+
+// Space across the end of a corridor (along z, ending at its window, at +z), but for a hole
+// just inside the window's casing and sill: they stand proud of the wall, in front of the
+// panel, so its edge is hidden and the window and its frame are all that show.
+function windowMask(corridor, win, material) {
+  const end = new THREE.Box3().setFromObject(corridor);
+  const z = end.max.z - 0.04; // just off the wall
+  const casing = new THREE.Box3();
+  const p = win.geometry.attributes.position;
+  const v = new THREE.Vector3();
+  win.updateWorldMatrix(true, false);
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).applyMatrix4(win.matrixWorld);
+    if (v.z < z) casing.expandByPoint(v);
+  }
+  const inset = 0.03;
+  const shape = new THREE.Shape([
+    new THREE.Vector2(end.min.x - 0.01, end.min.y - 0.01),
+    new THREE.Vector2(end.max.x + 0.01, end.min.y - 0.01),
+    new THREE.Vector2(end.max.x + 0.01, end.max.y + 0.01),
+    new THREE.Vector2(end.min.x - 0.01, end.max.y + 0.01),
+  ]);
+  shape.holes.push(new THREE.Path([
+    new THREE.Vector2(casing.min.x + inset, casing.min.y + inset),
+    new THREE.Vector2(casing.min.x + inset, casing.max.y - inset),
+    new THREE.Vector2(casing.max.x - inset, casing.max.y - inset),
+    new THREE.Vector2(casing.max.x - inset, casing.min.y + inset),
+  ]));
+  const mask = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
+  mask.name = 'WindowMask';
+  mask.position.z = z;
+  return mask;
 }
 
 // UVs straight down from above (world x, z), CARPET_TILE metres per repeat.
@@ -246,6 +281,13 @@ async function start() {
       o.castShadow = false;
       spaceMeshes.push(o);
     }
+    const corridor = room.root.getObjectByName(SPACE_WINDOW.corridor);
+    const win = room.root.getObjectByName(SPACE_WINDOW.window);
+    if (corridor?.isMesh && win?.isMesh) {
+      const mask = windowMask(corridor, win, starry ??= starsMaterial());
+      scene.add(mask);
+      spaceMeshes.push(mask);
+    }
   }
 
   const player = new Player(camera, renderer.domElement, buildCollider([level, ...rooms]));
@@ -360,17 +402,20 @@ async function start() {
     const exit = portals.byId.get(id);
     const slit = exit?.linked;
     if (!slit) continue;
+    const outline = { id, frame: exit.frame, width: exit.width, height: exit.height }; // before it narrows
+    const mask = (material) => slitMask(outline, slit, material);
+    exit.resize(slit.width, slit.height); // only the slit shows the way back, even up close
     if (kind === 'space') {
-      const mask = slitMask(exit, slit, starry ??= starsMaterial());
-      scene.add(mask);
-      spaceMeshes.push(mask);
+      const panel = mask(starry ??= starsMaterial());
+      scene.add(panel);
+      spaceMeshes.push(panel);
     } else {
       const room = rooms[roomNames.indexOf(id.split('/')[0])];
       let wall = null;
       room?.root.traverse((o) => o.isMesh && o.material.name === WALL_MATERIAL && (wall ??= o.material));
-      const mask = slitMask(exit, slit, wall ?? new THREE.MeshStandardMaterial({ color: 0xe7e7e7 }));
-      mask.receiveShadow = true;
-      scene.add(mask);
+      const panel = mask(wall ?? new THREE.MeshStandardMaterial({ color: 0xe7e7e7 }));
+      panel.receiveShadow = true;
+      scene.add(panel);
     }
   }
   const doorPortals = keypads?.doors.map((_, i) => portals.byId.get(`door${i}`)) ?? [];
