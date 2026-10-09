@@ -16,6 +16,7 @@ import { addFlickeringBulb } from './bulb.js';
 import { addVideoScreen } from './video.js';
 import { woodMaterial } from './wood.js';
 import { starsMaterial } from './stars.js';
+import { staticMaterial, setStaticTime } from './static.js';
 import { Sfx } from './sfx.js';
 
 const overlay = document.getElementById('overlay');
@@ -69,6 +70,14 @@ const WOOD = ['Dierama', 'DieramaDoors'];
 // from above at about the size Unity had it (0.48 of the image across a 0.7 m rug).
 const CARPET = ['CarpetClosed', 'CarpetOpen'];
 const CARPET_TILE = 1.5; // metres per repeat
+// The closed bedroom's TV (Cube): its screen (Material.008) shows static (src/static.js).
+// The open bedroom's TV keeps its own material.
+const TV = { room: 'bedroom-closed', object: 'Cube', material: 'Material.008' };
+const TV_LIGHT = { colour: 0xd6deff, intensity: 2.5, flicker: 0.25 }; // the screen's glow on the room
+// Worlds in the dark: no sun, bounce light or lights of their own (from the .blend), and only
+// a trace of sky light, so the closed bedroom is lit by its TV.
+const DARK = new Set(['bedroom-closed']);
+const DARK_SKY = 0.003;
 // Meshes that show space instead of themselves (src/stars.js): the closed bedroom's Star corridor.
 const SPACE = ['Star'];
 // The window at the Star corridor's end, the only thing in it besides space (see windowMask).
@@ -202,6 +211,7 @@ function addSky() {
   };
   const bounce = new THREE.HemisphereLight(0xf2f0ea, 0x9a9a9a, 0.9); // a little bounce from the ground
   scene.add(bounce);
+  sky.userData.bounce = bounce;
 
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.BasicShadowMap; // filtered by softShadows()
@@ -230,6 +240,30 @@ function addSun(levelRoot, mapSize) {
   return sun;
 }
 
+// The glow of a TV screen showing static: a wide spotlight just in front of the screen, out
+// from the TV (the screen's thinnest axis, on the side away from the TV's middle).
+function tvLight(screen) {
+  const box = new THREE.Box3().setFromObject(screen);
+  const centre = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  let tv = screen;
+  while (tv.parent && tv.name !== TV.object) tv = tv.parent;
+  const out = new THREE.Vector3().subVectors(centre, new THREE.Box3().setFromObject(tv).getCenter(new THREE.Vector3()));
+  const axis = size.x < Math.min(size.y, size.z) ? 'x' : size.y < size.z ? 'y' : 'z';
+  const normal = new THREE.Vector3().setComponent(['x', 'y', 'z'].indexOf(axis), Math.sign(out[axis]) || 1);
+  const light = new THREE.SpotLight(TV_LIGHT.colour, TV_LIGHT.intensity, 0, Math.PI / 2.4, 1, 2);
+  light.position.copy(centre).addScaledVector(normal, 0.04);
+  light.target.position.copy(centre).addScaledVector(normal, 1);
+  light.castShadow = true;
+  light.shadow.mapSize.set(1024, 1024);
+  light.shadow.camera.near = 0.03;
+  light.shadow.bias = -0.0005;
+  light.shadow.normalBias = 0.02;
+  light.userData.intensity = TV_LIGHT.intensity;
+  scene.add(light, light.target);
+  return light;
+}
+
 async function start() {
   const isStart = levelName === 'start';
   const level = await loadLevel(`/levels/${levelName}.glb`, scene, (e) => {
@@ -245,6 +279,8 @@ async function start() {
   const roomConcrete = {}; // by side
   const bare = {}; // by side
   const spaceMeshes = [];
+  const tvScreens = [];
+  let tvStatic = null;
   let carpet = null;
   let starry = null;
   for (const room of rooms) {
@@ -268,6 +304,16 @@ async function start() {
         if (o?.isMesh) o.material = wood;
       }
     }
+    if (roomNames[rooms.indexOf(room)] === TV.room) room.root.traverse((o) => {
+      if (!o.isMesh || o.material.name !== TV.material) return;
+      for (let a = o; a && a !== room.root; a = a.parent) {
+        if (a.name !== TV.object) continue;
+        o.material = tvStatic ??= staticMaterial();
+        o.castShadow = false;
+        tvScreens.push(o);
+        return;
+      }
+    });
     for (const name of CARPET) {
       const o = room.root.getObjectByName(name);
       if (!o?.isMesh) continue;
@@ -317,11 +363,18 @@ async function start() {
       worldLights[roomNames[i]] = [addSun(room.root, 2048)];
       room.root.traverse((o) => o.isLight && worldLights[roomNames[i]].push(o));
     });
-    for (const l of Object.values(worldLights).flat()) l.userData.intensity = l.intensity;
+    for (const [name, lights] of Object.entries(worldLights)) {
+      for (const l of lights) l.userData.intensity = DARK.has(name) ? 0 : l.intensity;
+    }
+    const { bounce } = sky.userData;
+    const bounceIntensity = bounce.intensity;
     setWorld = (world) => {
       for (const [name, lights] of Object.entries(worldLights)) {
         for (const l of lights) l.intensity = name === world ? l.userData.intensity : 0;
       }
+      const dark = DARK.has(world);
+      scene.environmentIntensity = dark ? DARK_SKY : SKY_LIGHT;
+      bounce.intensity = dark ? 0 : bounceIntensity;
       ground.visible = !NO_GROUND.has(world);
     };
     setWorld.lights = worldLights;
@@ -380,6 +433,8 @@ async function start() {
   }
   const bulbs = (await Promise.all([level, ...rooms].map((l, i) => addFlickeringBulb(l, listener, worldNames[i])))).filter(Boolean);
   for (const b of bulbs) setWorld?.lights[b.world]?.push(b.light);
+  const tvLights = tvScreens.map(tvLight);
+  for (const l of tvLights) setWorld?.lights[TV.room]?.push(l);
   const videos = [level, ...rooms].map((l, i) => addVideoScreen(l, listener, worldNames[i])).filter(Boolean);
   const portals = new PortalSystem(renderer, scene, [...level.portals, ...rooms.flatMap((r) => r.portals), ...(keypads?.portalDefs ?? [])], {
     world: isStart ? 'start' : undefined,
@@ -439,7 +494,7 @@ async function start() {
 
   const ao = new AmbientOcclusion(renderer, scene, camera);
   // Card text too: its letter quads are solid in the AO's normal pass and would come out as black bars.
-  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText')), ...screens.flatMap((s) => s.meshes), ...bulbs.flatMap((b) => b.meshes), ...videos.flatMap((v) => v.meshes), ...spaceMeshes];
+  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText')), ...screens.flatMap((s) => s.meshes), ...bulbs.flatMap((b) => b.meshes), ...videos.flatMap((v) => v.meshes), ...spaceMeshes, ...tvScreens];
   const bloom = new Bloom(renderer, scene, camera);
   if (keypads) bloom.add(keypads.glowMeshes);
   for (const b of bulbs) bloom.add(b.glows);
@@ -453,6 +508,14 @@ async function start() {
 
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.1);
+    setStaticTime(clock.elapsedTime);
+    // The glow flickers with the static's frames (30 a second).
+    const tvFrame = Math.floor(clock.elapsedTime * 30);
+    for (const l of tvLights) {
+      if (l.userData.frame === tvFrame) continue;
+      l.userData.frame = tvFrame;
+      l.userData.intensity = TV_LIGHT.intensity * (1 - TV_LIGHT.flicker * Math.random());
+    }
     player.getEye(prevEye);
     player.update(dt);
     if (sfx) {
