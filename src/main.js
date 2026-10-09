@@ -37,7 +37,17 @@ const SKY_LIGHT = 0.08; // the Sky shader is very bright HDR
 // Rooms in shadow: in these worlds, everything under the named ceiling gets only `light`
 // of the sky and bounce light (see shade.js), so the sentence screens (lit by area
 // lights, see screens.js) are what lights it.
-const SHADE = { 'room5555-left': { under: 'Ceiling', light: 0.06 } };
+const SHADE = { 'room5555-left': { under: 'Ceiling', light: 0.06 }, 'room5555-right': { under: 'Ceiling', light: 0.12 } };
+// Room 5555 (right) is in shade, lit by square spotlights (see squareSpot) from its ceiling:
+// one straight down on the plinth and its cube (`square` m across on the floor), and one on
+// each row of wax frames (with `margin` m round them, from `out` m in front of the wall),
+// which comes up from off `far` m from the row (short of the middle of the room, so both are
+// off there) to full at `near` m.
+const GALLERY = {
+  world: 'room5555-right',
+  plinth: { objects: ['Plinth', 'Cube'], square: 1.8, intensity: 40 },
+  frames: { objects: ['WaxFrame', 'WaxFrame001'], margin: 0.3, out: 2.5, intensity: 70, near: 2.5, far: 11, ease: 1.5 },
+};
 
 // Keypad codes and the rooms they open (public/levels/<room>.glb, entered through its
 // "Entrance" portal): one room for the code, or one per door (by the door's mesh name).
@@ -270,6 +280,77 @@ function tvLight(screen) {
   return light;
 }
 
+// A spotlight from `from` whose light falls exactly on the quadrilateral `corners` (four
+// points on a surface, in order): the cone just takes them in, and a mask (the light's map,
+// projected as its shadow camera sees) cuts the light to their outline, hard edged.
+function squareSpot(from, corners, { intensity, colour = 0xfff3e2 }) {
+  const target = corners.reduce((sum, c) => sum.add(c), new THREE.Vector3()).divideScalar(corners.length);
+  const view = new THREE.PerspectiveCamera(); // as three aims the light's shadow camera
+  view.position.copy(from);
+  view.lookAt(target);
+  view.updateMatrixWorld();
+  const flat = corners.map((c) => {
+    const p = c.clone().applyMatrix4(view.matrixWorldInverse);
+    return new THREE.Vector2(p.x / -p.z, p.y / -p.z);
+  });
+  const reach = Math.max(...flat.map((p) => p.length())) * 1.05; // tan of the cone's angle
+  const size = 512;
+  const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size });
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  for (const p of flat) ctx.lineTo((p.x / reach / 2 + 0.5) * size, (0.5 - p.y / reach / 2) * size);
+  ctx.fill();
+  const light = new THREE.SpotLight(colour, intensity, 0, Math.atan(reach), 0, 2);
+  light.map = new THREE.CanvasTexture(canvas);
+  light.position.copy(from);
+  light.target.position.copy(target);
+  light.userData.intensity = intensity;
+  scene.add(light, light.target);
+  return light;
+}
+
+// Room 5555 (right)'s spotlights (see GALLERY), and an update for the frames' to brighten as
+// the player comes up to them.
+function addGallerySpots(room) {
+  const ceiling = new THREE.Box3().setFromObject(room.getObjectByName('Ceiling'));
+  const top = ceiling.min.y - 0.05;
+  const middle = ceiling.getCenter(new THREE.Vector3());
+  const { plinth, frames } = GALLERY;
+
+  const stand = new THREE.Box3();
+  for (const name of plinth.objects) stand.expandByObject(room.getObjectByName(name));
+  const c = stand.getCenter(new THREE.Vector3());
+  const h = plinth.square / 2;
+  const floorY = stand.min.y;
+  const square = [[-h, -h], [h, -h], [h, h], [-h, h]].map(([x, z]) => new THREE.Vector3(c.x + x, floorY, c.z + z));
+  const lights = [squareSpot(new THREE.Vector3(c.x, top, c.z + 1e-3), square, plinth)];
+
+  const rows = frames.objects.map((name) => {
+    const b = new THREE.Box3().setFromObject(room.getObjectByName(name)).expandByScalar(frames.margin);
+    const centre = b.getCenter(new THREE.Vector3());
+    const facing = Math.sign(middle.z - centre.z); // the frames hang on walls across z
+    const z = facing > 0 ? b.min.z + frames.margin : b.max.z - frames.margin; // the wall, behind them
+    const rect = [[b.min.x, b.min.y], [b.max.x, b.min.y], [b.max.x, b.max.y], [b.min.x, b.max.y]].map(([x, y]) => new THREE.Vector3(x, y, z));
+    const light = squareSpot(new THREE.Vector3(centre.x, top, z + facing * frames.out), rect, frames);
+    light.userData.intensity = 0;
+    lights.push(light);
+    return { light, x: centre.x, halfWidth: (b.max.x - b.min.x) / 2, z, level: 0 };
+  });
+
+  const update = (dt, eye) => {
+    for (const row of rows) {
+      const d = Math.hypot(Math.max(0, Math.abs(eye.x - row.x) - row.halfWidth), eye.z - row.z);
+      const goal = 1 - THREE.MathUtils.smoothstep(d, frames.near, frames.far);
+      row.level += (goal - row.level) * Math.min(1, dt * frames.ease);
+      row.light.userData.intensity = frames.intensity * row.level;
+    }
+  };
+  return { lights, update };
+}
+
 async function start() {
   const isStart = levelName === 'start';
   const level = await loadLevel(`/levels/${levelName}.glb`, scene, (e) => {
@@ -450,6 +531,9 @@ async function start() {
   for (const b of bulbs) setWorld?.lights[b.world]?.push(b.light);
   const tvLights = tvScreens.map(tvLight);
   for (const l of tvLights) setWorld?.lights[TV.room]?.push(l);
+  const galleryRoom = rooms[roomNames.indexOf(GALLERY.world)];
+  const gallery = galleryRoom && addGallerySpots(galleryRoom.root);
+  for (const l of gallery?.lights ?? []) setWorld?.lights[GALLERY.world]?.push(l);
   const videos = [level, ...rooms].map((l, i) => addVideoScreen(l, listener, worldNames[i])).filter(Boolean);
   const portals = new PortalSystem(renderer, scene, [...level.portals, ...rooms.flatMap((r) => r.portals), ...(keypads?.portalDefs ?? [])], {
     world: isStart ? 'start' : undefined,
@@ -524,6 +608,7 @@ async function start() {
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.1);
     setStaticTime(clock.elapsedTime);
+    gallery?.update(dt, player.position);
     // The glow flickers with the static's frames (30 a second).
     const tvFrame = Math.floor(clock.elapsedTime * 30);
     for (const l of tvLights) {

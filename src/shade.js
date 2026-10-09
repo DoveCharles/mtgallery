@@ -5,33 +5,42 @@ import * as THREE from 'three';
 // A shade zone is everything underneath an object (a ceiling), within its footprint: there
 // surfaces get only `light` of that light, fading back to full over FEATHER outside it.
 // Direct light (the sun, which the ceiling already shadows, and area lights) is untouched.
+// The zones are shared by every patched material (the worlds are far apart, and some
+// materials are shared between them).
 
 const FEATHER = 0.25; // m
 const MAX_ZONES = 4;
 
-// Patches every standard material under `root` with the zones under `objects`.
+const uniforms = {
+  shadeMin: { value: Array.from({ length: MAX_ZONES }, () => new THREE.Vector3(1e9, 1e9, 1e9)) },
+  shadeMax: { value: Array.from({ length: MAX_ZONES }, () => new THREE.Vector3(-1e9, -1e9, -1e9)) },
+  shadeK: { value: Array(MAX_ZONES).fill(1) },
+};
+let zoneCount = 0;
+const patched = new WeakSet();
+
+// Adds the zones under `objects` (`light` of the light reaches them) and patches every
+// standard material under `root`.
 export function applyShadeZones(root, objects, light) {
-  const zones = objects.slice(0, MAX_ZONES).map((o) => {
+  for (const o of objects) {
+    if (zoneCount === MAX_ZONES) break;
     const b = new THREE.Box3().setFromObject(o);
-    b.min.y = -1e4;
-    return b;
-  });
-  if (!zones.length) return;
+    uniforms.shadeMin.value[zoneCount].copy(b.min).setY(-1e4);
+    uniforms.shadeMax.value[zoneCount].copy(b.max);
+    uniforms.shadeK.value[zoneCount] = light;
+    zoneCount++;
+  }
 
-  const pad = (a, v) => [...a, ...Array(MAX_ZONES - a.length).fill(v)];
-  const uniforms = {
-    shadeMin: { value: pad(zones.map((z) => z.min), new THREE.Vector3(1e9, 1e9, 1e9)) },
-    shadeMax: { value: pad(zones.map((z) => z.max), new THREE.Vector3(-1e9, -1e9, -1e9)) },
-    shadeK: { value: light },
-  };
-
-  const patched = new Set();
   root.traverse((o) => {
     if (!o.isMesh) return;
     for (const m of [o.material].flat()) {
       if (!m.isMeshStandardMaterial || patched.has(m)) continue;
       patched.add(m);
-      m.onBeforeCompile = (shader) => {
+      // On top of any patch the material has already (the procedural wood's, say).
+      const before = m.onBeforeCompile.bind(m);
+      const key = m.customProgramCacheKey.bind(m)();
+      m.onBeforeCompile = (shader, renderer) => {
+        before(shader, renderer);
         Object.assign(shader.uniforms, uniforms);
         shader.vertexShader = shader.vertexShader
           .replace('#include <common>', '#include <common>\nvarying vec3 vShadePos;')
@@ -46,14 +55,15 @@ export function applyShadeZones(root, objects, light) {
 varying vec3 vShadePos;
 uniform vec3 shadeMin[${MAX_ZONES}];
 uniform vec3 shadeMax[${MAX_ZONES}];
-uniform float shadeK;
+uniform float shadeK[${MAX_ZONES}];
 float shadeAt(vec3 p) {
-  float d = 1e9; // distance outside the nearest zone (<= 0 inside)
+  float shade = 1.0;
   for (int i = 0; i < ${MAX_ZONES}; i++) {
     vec3 q = max(shadeMin[i] - p, p - shadeMax[i]);
-    d = min(d, max(max(q.x, q.y), q.z));
+    float d = max(max(q.x, q.y), q.z); // distance outside the zone (<= 0 inside)
+    shade = min(shade, mix(shadeK[i], 1.0, smoothstep(0.0, ${FEATHER.toFixed(2)}, d)));
   }
-  return mix(shadeK, 1.0, smoothstep(0.0, ${FEATHER.toFixed(2)}, d));
+  return shade;
 }`,
           )
           .replace(
@@ -69,7 +79,7 @@ float shadeAt(vec3 p) {
 }`,
           );
       };
-      m.customProgramCacheKey = () => 'shade';
+      m.customProgramCacheKey = () => `${key}+shade`;
       m.needsUpdate = true;
     }
   });
