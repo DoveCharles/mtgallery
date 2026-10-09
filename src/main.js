@@ -16,6 +16,7 @@ import { addFlickeringBulb } from './bulb.js';
 import { addVideoScreen } from './video.js';
 import { woodMaterial, oakMaterial } from './wood.js';
 import { steelMaterial } from './steel.js';
+import { hangPaintings } from './paintings.js';
 import { starsMaterial } from './stars.js';
 import { staticMaterial, addStatic, setStaticTime } from './static.js';
 import { Sfx } from './sfx.js';
@@ -91,6 +92,12 @@ const FRAME_FINISHES = [
   { object: 'WaxFrame', materials: ['Material.011'], finish: 'oak' },
   { object: 'WaxFrame001', materials: ['Material.011', 'WaxCover'], finish: 'steel' },
 ];
+// The wax paintings in the frames (see src/paintings.js), left to right as you face each row,
+// as the Unity project hung them. (Its rows had five frames: the sixth repeats one.)
+const WAX_PAINTINGS = {
+  WaxFrame: { material: 'Material.012', paintings: ['test-3-1-2', 'test-3', 'test-3-2', 'test-3 turned', 'test-3-1-2', 'test-3-2'] },
+  WaxFrame001: { material: 'Material.012', paintings: ['test-2-2', 'test-4', 'test-5', 'test-2', 'test-6', 'test-2-2'] },
+};
 // The bedrooms' rug (bare in Bedroom.blend, and exported without UVs): the Unity project's
 // carpet material ("Brass 3"), a grey wool zigzag with a worn carpet's normal map, projected
 // from above at about the size Unity had it (0.48 of the image across a 0.7 m rug).
@@ -449,6 +456,11 @@ async function start() {
         const { name, side } = o.material ?? {};
         if (o.isMesh && frame.materials.includes(name)) o.material = finishes[`${frame.finish}/${name}`] ??= Object.assign(FINISHES[frame.finish]({ side }), { name });
       });
+    }
+    for (const [name, { material, paintings }] of Object.entries(WAX_PAINTINGS)) {
+      const rows = [];
+      room.root.getObjectByName(name)?.traverse((o) => o.isMesh && o.material.name === material && rows.push(o));
+      for (const row of rows) hangPaintings(row, paintings);
     }
     if (roomNames[rooms.indexOf(room)] === TV.room) room.root.traverse((o) => {
       if (!o.isMesh || o.material.name !== TV.material) return;
