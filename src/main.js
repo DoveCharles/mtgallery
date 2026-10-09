@@ -82,12 +82,13 @@ const CONCRETE = 'concrete_layers_02';
 const ROOM_CONCRETE_REPEAT = 1;
 // Meshes given the procedural wood (src/wood.js), cut from one block in the first's space.
 const WOOD = ['Dierama', 'DieramaDoors'];
-// Frames' finishes: their material (by name, under the named object) replaced by stained oak
-// (src/wood.js) or grey powder-coated steel (src/steel.js), after the real ones.
+// Frames' finishes: their materials (by name, under the named object) replaced by stained oak
+// (src/wood.js) or grey powder-coated steel (src/steel.js), after the real ones. Each keeps its
+// name, so the covers (WaxCover, see GALLERY) are still found to fade.
 const FINISHES = { oak: oakMaterial, steel: steelMaterial };
 const FRAME_FINISHES = [
-  { object: 'WaxFrame', material: 'Material.011', finish: 'oak' },
-  { object: 'WaxFrame001', material: 'Material.011', finish: 'steel' },
+  { object: 'WaxFrame', materials: ['Material.011'], finish: 'oak' },
+  { object: 'WaxFrame001', materials: ['Material.011', 'WaxCover'], finish: 'steel' },
 ];
 // The bedrooms' rug (bare in Bedroom.blend, and exported without UVs): the Unity project's
 // carpet material ("Brass 3"), a grey wool zigzag with a worn carpet's normal map, projected
@@ -444,7 +445,8 @@ async function start() {
     }
     for (const frame of FRAME_FINISHES) {
       room.root.getObjectByName(frame.object)?.traverse((o) => {
-        if (o.isMesh && o.material.name === frame.material) o.material = finishes[frame.finish] ??= FINISHES[frame.finish]({ side: o.material.side });
+        const { name, side } = o.material ?? {};
+        if (o.isMesh && frame.materials.includes(name)) o.material = finishes[`${frame.finish}/${name}`] ??= Object.assign(FINISHES[frame.finish]({ side }), { name });
       });
     }
     if (roomNames[rooms.indexOf(room)] === TV.room) room.root.traverse((o) => {
