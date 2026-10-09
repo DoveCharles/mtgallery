@@ -14,7 +14,7 @@ import { addSentenceScreens } from './screens.js';
 import { applyShadeZones, addVoid } from './shade.js';
 import { addFlickeringBulb } from './bulb.js';
 import { addVideoScreen } from './video.js';
-import { woodMaterial } from './wood.js';
+import { woodMaterial, oakMaterial } from './wood.js';
 import { starsMaterial } from './stars.js';
 import { staticMaterial, addStatic, setStaticTime } from './static.js';
 import { Sfx } from './sfx.js';
@@ -81,6 +81,8 @@ const CONCRETE = 'concrete_layers_02';
 const ROOM_CONCRETE_REPEAT = 1;
 // Meshes given the procedural wood (src/wood.js), cut from one block in the first's space.
 const WOOD = ['Dierama', 'DieramaDoors'];
+// Frames given stained oak (src/wood.js): their material by name, under the named object.
+const OAK_FRAMES = [{ object: 'WaxFrame', material: 'Material.011' }];
 // The bedrooms' rug (bare in Bedroom.blend, and exported without UVs): the Unity project's
 // carpet material ("Brass 3"), a grey wool zigzag with a worn carpet's normal map, projected
 // from above at about the size Unity had it (0.48 of the image across a 0.7 m rug).
@@ -410,6 +412,7 @@ async function start() {
   const spaceMeshes = [];
   const tvScreens = [];
   let tvStatic = null;
+  let oak = null;
   let carpet = null;
   let starry = null;
   for (const room of rooms) {
@@ -432,6 +435,11 @@ async function start() {
         const o = room.root.getObjectByName(name);
         if (o?.isMesh) o.material = wood;
       }
+    }
+    for (const frame of OAK_FRAMES) {
+      room.root.getObjectByName(frame.object)?.traverse((o) => {
+        if (o.isMesh && o.material.name === frame.material) o.material = oak ??= oakMaterial({ side: o.material.side });
+      });
     }
     if (roomNames[rooms.indexOf(room)] === TV.room) room.root.traverse((o) => {
       if (!o.isMesh || o.material.name !== TV.material) return;
