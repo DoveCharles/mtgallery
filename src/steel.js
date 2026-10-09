@@ -2,8 +2,8 @@ import * as THREE from 'three';
 
 // Grey powder-coated steel (room 5555's frames, after a photo of the real ones): a satin
 // paint finish over metal, its surface a fine sandy stipple (tiny bumps, and specks a shade
-// lighter or darker), with a few faint chalky scuffs. All in world space; the stipple fades
-// to smooth where it would be finer than a pixel, so it doesn't shimmer.
+// lighter or darker). All in world space; the stipple fades to smooth where it would be finer
+// than a pixel, so it doesn't shimmer.
 
 const STEEL = /* glsl */ `
 uniform float steelGrain;
@@ -43,12 +43,9 @@ vec2 steelAt(vec3 p) {
   float speck = steelHash(floor(q * 1.5));
   steelHeight = stipple * fine;
   float shade = 1.0 + ((stipple - 0.5) * 0.25 + (speck - 0.5) * 0.18) * fine;
-  // Scuffs: faint lighter smears, here and there, stretched sideways.
-  float smear = smoothstep(0.62, 0.8, steelFbm(p * vec3(3.0, 12.0, 3.0) + 11.0));
-  shade *= 1.0 + smear * 0.35;
   // Gentle unevenness in the coat.
   shade *= 0.92 + 0.16 * steelFbm(p * 1.5);
-  return vec2(shade, 1.0 - smear * 0.2);
+  return vec2(shade, 1.0);
 }
 vec3 steelBumped(vec3 surfPos, vec3 n) {
   vec3 dpx = dFdx(surfPos);

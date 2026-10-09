@@ -52,7 +52,7 @@ const GALLERY = {
   world: 'room5555-right',
   plinth: { objects: ['Plinth', 'Cube'], square: 1.8, intensity: 40 },
   frames: { objects: ['WaxFrame', 'WaxFrame001'], margin: 0.3, out: 2.5, intensity: 70, near: 2.5, far: 11, ease: 1.5 },
-  covers: { material: 'WaxCover', reveal: 3, hide: 3.5, fade: 2.5 },
+  covers: { material: 'WaxCover', reveal: 4.5, hide: 5, fade: 2.5 },
 };
 // Walls that are pure black (see addVoid in shade.js): in each world, the wall the named screen
 // hangs on, all along under the ceiling (its doorways stay as they are).
