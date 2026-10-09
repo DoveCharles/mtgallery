@@ -26,12 +26,12 @@ let zoneCount = 0;
 let voidCount = 0;
 const patched = new WeakSet();
 
-// Adds the zones under `objects` (`light` of the light reaches them) and patches every
-// standard material under `root`.
+// Adds the zones under `objects` (or world boxes; `light` of the light reaches them) and
+// patches every standard material under `root`.
 export function applyShadeZones(root, objects, light) {
   for (const o of objects) {
     if (zoneCount === MAX_ZONES) break;
-    const b = new THREE.Box3().setFromObject(o);
+    const b = o.isBox3 ? o : new THREE.Box3().setFromObject(o);
     uniforms.shadeMin.value[zoneCount].copy(b.min).setY(-1e4);
     uniforms.shadeMax.value[zoneCount].copy(b.max);
     uniforms.shadeK.value[zoneCount] = light;

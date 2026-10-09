@@ -37,8 +37,9 @@ const FLOOR_FADE = 2.5; // seconds
 const SKY_LIGHT = 0.08; // the Sky shader is very bright HDR
 // Rooms in shadow: in these worlds, everything under the named ceiling gets only `light`
 // of the sky and bounce light (see shade.js), so the sentence screens (lit by area
-// lights, see screens.js) are what lights it.
-const SHADE = { 'room5555-left': { under: 'Ceiling', light: 0.06 }, 'room5555-right': { under: 'Ceiling', light: 0.12 } };
+// lights, see screens.js) are what lights it. With `entrance`, the zone reaches on out to the
+// room's Entrance portal, over the corridor in from it.
+const SHADE = { 'room5555-left': { under: 'Ceiling', light: 0.06 }, 'room5555-right': { under: 'Ceiling', light: 0.12, entrance: true } };
 // Room 5555 (right) is in shade, lit by square spotlights (see squareSpot) from its ceiling:
 // one straight down on the plinth and its cube (`square` m across on the floor), and one on
 // each row of wax frames (with `margin` m round them, from `out` m in front of the wall),
@@ -535,7 +536,10 @@ async function start() {
     rooms.forEach((room, i) => {
       const shade = SHADE[roomNames[i]];
       const ceiling = shade && room.root.getObjectByName(shade.under);
-      if (ceiling) applyShadeZones(room.root, [ceiling], shade.light);
+      const entrance = shade?.entrance && room.portals.find((p) => p.id.endsWith('Entrance'))?.mesh;
+      const zone = ceiling && new THREE.Box3().setFromObject(ceiling);
+      if (entrance) zone.union(new THREE.Box3().setFromObject(entrance));
+      if (ceiling) applyShadeZones(room.root, [zone], shade.light);
       const black = BLACK_WALLS[roomNames[i]];
       const screen = black && room.root.getObjectByName(black.screen);
       if (screen) blackWall(screen, room.root.getObjectByName(black.under));
