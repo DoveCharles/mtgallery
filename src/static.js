@@ -49,4 +49,31 @@ export function staticMaterial({ grain = 0.004, brightness = 0.85 } = {}) {
   });
 }
 
+// Static in a lit material's glow: its emissive light flickers grain by grain, `amount`
+// (0..1) of the way from steady to full static, the grains `grain` metres across in the world.
+export function addStatic(material, { amount = 0.5, grain = 0.006 } = {}) {
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, { time, staticAmount: { value: amount }, staticGrain: { value: grain } });
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vStatic;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvStatic = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+uniform float time;
+uniform float staticAmount;
+uniform float staticGrain;
+varying vec3 vStatic;
+float staticHash(vec3 p) {
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yxz + 33.33);
+  return fract((p.x + p.y) * p.z);
+}`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+float grainValue = staticHash(floor(vStatic / staticGrain) + floor(time * 30.0) * 17.0);
+totalEmissiveRadiance *= mix(1.0, grainValue * 2.0, staticAmount);`);
+  };
+  material.customProgramCacheKey = () => 'tv-static-glow';
+  return material;
+}
+
 export const setStaticTime = (t) => (time.value = t);

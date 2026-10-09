@@ -16,7 +16,7 @@ import { addFlickeringBulb } from './bulb.js';
 import { addVideoScreen } from './video.js';
 import { woodMaterial } from './wood.js';
 import { starsMaterial } from './stars.js';
-import { staticMaterial, setStaticTime } from './static.js';
+import { staticMaterial, addStatic, setStaticTime } from './static.js';
 import { Sfx } from './sfx.js';
 
 const overlay = document.getElementById('overlay');
@@ -79,8 +79,9 @@ const TV_LIGHT = { colour: 0xd6deff, intensity: 2.5, flicker: 0.25 }; // the scr
 const DARK = new Set(['bedroom-closed']);
 const DARK_SKY = 0.003;
 // The closed bedroom's coat hangers: metal shows nothing in the dark (nothing to reflect)
-// and they're out of the TV's light, so pale wire with a faint glow of its own.
-const HANGERS = { name: 'CoatHangerClosed', glow: 0.15 };
+// and they're out of the TV's light, so pale wire with a faint glow of its own, flickering a
+// little with the TV's static.
+const HANGERS = { name: 'CoatHangerClosed', glow: 0.1, static: 0.5 };
 // And its carpet glows very faintly (its own pattern), so it shows in the dark.
 const CARPET_GLOW = { CarpetClosed: 0.1 };
 // Meshes that show space instead of themselves (src/stars.js): the closed bedroom's Star corridor.
@@ -322,6 +323,7 @@ async function start() {
     const hangers = room.root.getObjectByName(HANGERS.name);
     if (hangers?.isMesh) {
       hangers.material = new THREE.MeshStandardMaterial({ name: 'Hangers', color: 0xffffff, roughness: 0.5, emissive: 0xffffff, emissiveIntensity: HANGERS.glow });
+      addStatic(hangers.material, { amount: HANGERS.static });
     }
     for (const name of CARPET) {
       const o = room.root.getObjectByName(name);
