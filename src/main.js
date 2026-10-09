@@ -14,6 +14,8 @@ import { addSentenceScreens } from './screens.js';
 import { applyShadeZones } from './shade.js';
 import { addFlickeringBulb } from './bulb.js';
 import { addVideoScreen } from './video.js';
+import { woodMaterial } from './wood.js';
+import { starsMaterial } from './stars.js';
 import { Sfx } from './sfx.js';
 
 const overlay = document.getElementById('overlay');
@@ -60,6 +62,10 @@ const LINKS = [
 // elsewhere), at the scale their UVs had it.
 const CONCRETE = 'concrete_layers_02';
 const ROOM_CONCRETE_REPEAT = 1;
+// Meshes given the procedural wood (src/wood.js), cut from one block in the first's space.
+const WOOD = ['Dierama', 'DieramaDoors'];
+// Meshes that show space instead of themselves (src/stars.js): the closed bedroom's Star corridor.
+const SPACE = ['Star'];
 // Room i sits at (1000 * (i + 1), ROOM_HEIGHT, 0): raised clear of the intro's white
 // ground plane (y 0) so its floor doesn't fight with it and light can get in from outside.
 const ROOM_SPACING = 1000;
@@ -141,6 +147,8 @@ async function start() {
   );
 
   const roomConcrete = {}; // by side
+  const spaceMeshes = [];
+  let starry = null;
   for (const room of rooms) {
     room.root.traverse((o) => {
       if (o.isMesh && o.material.name === CONCRETE) {
@@ -148,6 +156,21 @@ async function start() {
         o.material = roomConcrete[side] ??= Object.assign(concreteMaterial(ROOM_CONCRETE_REPEAT), { side });
       }
     });
+    const block = room.root.getObjectByName(WOOD[0]);
+    if (block) {
+      const wood = woodMaterial({ space: block, side: block.material.side });
+      for (const name of WOOD) {
+        const o = room.root.getObjectByName(name);
+        if (o?.isMesh) o.material = wood;
+      }
+    }
+    for (const name of SPACE) {
+      const o = room.root.getObjectByName(name);
+      if (!o?.isMesh) continue;
+      o.material = starry ??= starsMaterial();
+      o.castShadow = false;
+      spaceMeshes.push(o);
+    }
   }
 
   const player = new Player(camera, renderer.domElement, buildCollider([level, ...rooms]));
@@ -269,7 +292,7 @@ async function start() {
 
   const ao = new AmbientOcclusion(renderer, scene, camera);
   // Card text too: its letter quads are solid in the AO's normal pass and would come out as black bars.
-  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText')), ...screens.flatMap((s) => s.meshes), ...bulbs.flatMap((b) => b.meshes), ...videos.flatMap((v) => v.meshes)];
+  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText')), ...screens.flatMap((s) => s.meshes), ...bulbs.flatMap((b) => b.meshes), ...videos.flatMap((v) => v.meshes), ...spaceMeshes];
   const bloom = new Bloom(renderer, scene, camera);
   if (keypads) bloom.add(keypads.glowMeshes);
   for (const b of bulbs) bloom.add(b.glows);

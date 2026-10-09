@@ -13,7 +13,7 @@ const _dir = new THREE.Vector3();
 const _rot = new THREE.Matrix3();
 const JOY_RADIUS = 50; // px the knob can travel from the base's centre
 
-// First-person walker: pointer-lock mouse look, WASD, capsule-vs-level collision.
+// First-person walker: pointer-lock mouse look (or the arrow keys), WASD, capsule-vs-level collision.
 export class Player {
   radius = 0.3;
   height = 1.95;
@@ -25,6 +25,7 @@ export class Player {
   runSpeed = 6.75;
   gravity = -20;
   lookSpeed = 0.002;
+  keyLookSpeed = 2; // rad/s, arrow keys
 
   position = new THREE.Vector3(); // feet
   velocity = new THREE.Vector3();
@@ -138,8 +139,12 @@ export class Player {
     const k = this.enabled ? this.keys : NO_KEYS;
     if (this.joystick) this.joystick.hidden = !this.enabled;
     const stick = this.enabled ? this.stick : { x: 0, y: 0 };
-    const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) + stick.y;
-    const strafe = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) + stick.x;
+    const forward = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0) + stick.y;
+    const strafe = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0) + stick.x;
+    const turn = (k.has('ArrowLeft') ? 1 : 0) - (k.has('ArrowRight') ? 1 : 0);
+    const tilt = (k.has('ArrowUp') ? 1 : 0) - (k.has('ArrowDown') ? 1 : 0);
+    this.yaw += turn * this.keyLookSpeed * dt;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + tilt * this.keyLookSpeed * 0.75 * dt, -1.5, 1.5);
     const speed = k.has('ShiftLeft') || k.has('ShiftRight') ? this.runSpeed : this.walkSpeed;
 
     const sin = Math.sin(this.yaw);

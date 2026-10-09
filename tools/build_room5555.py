@@ -39,7 +39,7 @@ UNIFORM = {"Ceiling": "Material.003"}  # objects exported all in one material (t
 # or -x, in its own axes) the slit is on.
 SLIT_DOORS = "DieramaDoors"
 SLITS = {+1: "SlitClosed", -1: "SlitOpen"}
-SLIT_GAP = 0.01  # the portal sits this far outside the slit
+SLIT_DEPTH = 0.07  # how far into the slit the portal sits (the door is 0.207 thick)
 # Textures missing from the .blend's paths, from blender/textures.
 TEXTURES = {
     "test 3 1.tiff": "wax_scan.jpg",  # downsized from Wax Scans/test 3 1.tiff
@@ -89,7 +89,8 @@ def cut_portal():
 
 
 def slit_portals():
-    """A portal over the outside of each slit through the Dierama's doors: the faces
+    """A portal partway into each slit through the Dierama's doors (so the slit's depth
+    shows around it, as a doorway's would): the faces
     lining a slit run along the box's x axis, so they're the door's faces whose normals
     are square to it; each connected group of them on one side is a hole through the door,
     and the slit is the smallest one (the rest are the doors' edges)."""
@@ -122,7 +123,7 @@ def slit_portals():
             raise SystemExit(f"No slit on the {'+' if side > 0 else '-'}x side of {SLIT_DOORS}")
         size = lambda g: (max(v.y for v in g) - min(v.y for v in g)) * (max(v.z for v in g) - min(v.z for v in g))
         slit = min(holes, key=size)
-        x = side * (max(abs(v.x) for v in slit) + SLIT_GAP)
+        x = side * (max(abs(v.x) for v in slit) - SLIT_DEPTH)
         y0, y1 = min(v.y for v in slit), max(v.y for v in slit)
         z0, z1 = min(v.z for v in slit), max(v.z for v in slit)
         me = bpy.data.meshes.new(name)
@@ -135,7 +136,7 @@ def slit_portals():
         portal["portal"] = name
         for c in doors.users_collection:
             c.objects.link(portal)
-        print(f"{name}: {y1 - y0:.3f} x {z1 - z0:.3f}, centre {(z0 + z1) / 2:.3f} up, at", tuple(round(c, 3) for c in box.matrix_world @ Vector((x, (y0 + y1) / 2, (z0 + z1) / 2))))
+        print(f"{name}: {y1 - y0:.3f} x {z1 - z0:.3f}, centre {(z0 + z1) / 2:.3f} up, {max(abs(v.x) for v in slit) - abs(x):.3f} deep, at", tuple(round(c, 3) for c in box.matrix_world @ Vector((x, (y0 + y1) / 2, (z0 + z1) / 2))))
     bm.free()
 
 
