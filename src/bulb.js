@@ -2,15 +2,21 @@ import * as THREE from 'three';
 
 // The flickering lightbulb (the "Lightbulb" object, with its "Filament" child), ported from
 // the old Unity RealisticFlickerEmissionLightAndGlass with the values it had in the scene.
-// Every MIN_DELAY–MAX_DELAY seconds the bulb picks a new brightness (or, BLACKOUT of the
-// time, goes dark), and eases towards it; the glass follows more slowly. The brightness
-// drives the filament's glow, the glass's, a point light and the buzz's volume, and every
-// time the bulb comes back on (crosses ON) it clinks.
+// Like a bulb with a loose contact, it mostly burns steadily (with a faint wavering), then
+// stutters: a burst of quick cut-outs and catches, now and then a longer blackout that it
+// sputters back out of. The filament heats faster than it cools, and the glass follows more
+// slowly still. The brightness drives the filament's glow, the glass's, a point light and
+// the buzz's volume, and every time the bulb comes back on (crosses ON) it clinks.
 
-const MIN_DELAY = 0.01; // s
-const MAX_DELAY = 0.51;
-const BLACKOUT = 0.1; // chance of a pick being "off"
-const EASE = 12; // per second, towards the picked brightness
+const STEADY = [0.6, 4]; // s the bulb burns between stutters
+const BURST = [2, 7]; // cut-outs in a stutter
+const CUT = [0.02, 0.09]; // s each cut-out lasts
+const CATCH = [0.03, 0.2]; // s it catches for in between
+const BLACKOUT = 0.15; // chance a stutter ends in a blackout
+const BLACKOUT_LENGTH = [0.3, 1.6]; // s
+const WAVER = 0.04; // the steady burn's wavering
+const RISE = 50; // per second, as the filament heats
+const FALL = 30; // per second, as it cools
 const GLASS_EASE = 6;
 
 const FILAMENT_COLOR = new THREE.Color(1, 0.5913, 0.1569);
@@ -82,10 +88,28 @@ export async function addFlickeringBulb(level, listener, world) {
   const clink = positional(null, CLINK_RANGE);
   group.updateMatrixWorld(true);
 
+  const rand = ([lo, hi]) => THREE.MathUtils.randFloat(lo, hi);
+  // The flicker to come, as [brightness, seconds] steps.
+  const steps = [];
+  const plan = () => {
+    steps.push([rand([0.9, 1]), rand(STEADY)]);
+    const cuts = THREE.MathUtils.randInt(...BURST);
+    for (let i = 0; i < cuts; i++) {
+      steps.push([rand([0, 0.15]), rand(CUT)]);
+      if (i < cuts - 1) steps.push([rand([0.5, 1]), rand(CATCH)]);
+    }
+    if (Math.random() < BLACKOUT) {
+      steps.push([0, rand(BLACKOUT_LENGTH)]);
+      // Sputtering back on.
+      for (let i = THREE.MathUtils.randInt(1, 3); i > 0; i--) steps.push([rand([0.3, 0.8]), rand(CUT)], [rand([0, 0.1]), rand(CUT)]);
+    }
+  };
+
   let brightness = 0;
   let target = 0;
   let glassBrightness = 0;
   let timer = 0;
+  let waver = 0;
   let wasOn = false;
   let lastClink = -Infinity;
   let time = 0;
@@ -111,10 +135,13 @@ export async function addFlickeringBulb(level, listener, world) {
       time += dt;
       timer -= dt;
       if (timer <= 0) {
-        target = Math.random() < BLACKOUT ? 0 : Math.random();
-        timer = THREE.MathUtils.randFloat(MIN_DELAY, MAX_DELAY);
+        if (!steps.length) plan();
+        [target, timer] = steps.shift();
       }
-      brightness = THREE.MathUtils.lerp(brightness, target, Math.min(dt * EASE, 1));
+      // A slow random walk, only while it's burning well.
+      waver = THREE.MathUtils.clamp(waver + (Math.random() - 0.5) * dt * 4, -1, 1) * 0.98;
+      const goal = target > 0.85 ? target * (1 + waver * WAVER) : target;
+      brightness = THREE.MathUtils.lerp(brightness, goal, 1 - Math.exp(-dt * (goal > brightness ? RISE : FALL)));
       glassBrightness = THREE.MathUtils.lerp(glassBrightness, brightness, Math.min(dt * GLASS_EASE, 1));
 
       for (const m of glows) m.material.emissiveIntensity = brightness * FILAMENT_GLOW;
