@@ -78,6 +78,9 @@ const TV_LIGHT = { colour: 0xd6deff, intensity: 2.5, flicker: 0.25 }; // the scr
 // a trace of sky light, so the closed bedroom is lit by its TV.
 const DARK = new Set(['bedroom-closed']);
 const DARK_SKY = 0.003;
+// The closed bedroom's coat hangers: metal shows nothing in the dark (nothing to reflect)
+// and they're out of the TV's light, so pale wire with a faint glow of its own.
+const HANGERS = { name: 'CoatHangerClosed', glow: 0.25 };
 // Meshes that show space instead of themselves (src/stars.js): the closed bedroom's Star corridor.
 const SPACE = ['Star'];
 // The window at the Star corridor's end, the only thing in it besides space (see windowMask).
@@ -314,6 +317,10 @@ async function start() {
         return;
       }
     });
+    const hangers = room.root.getObjectByName(HANGERS.name);
+    if (hangers?.isMesh) {
+      hangers.material = new THREE.MeshStandardMaterial({ name: 'Hangers', color: 0xffffff, roughness: 0.5, emissive: 0xffffff, emissiveIntensity: HANGERS.glow });
+    }
     for (const name of CARPET) {
       const o = room.root.getObjectByName(name);
       if (!o?.isMesh) continue;
