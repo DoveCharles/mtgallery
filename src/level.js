@@ -42,6 +42,7 @@ export async function loadLevel(url, scene, onProgress, moving = () => false, { 
       });
       return;
     }
+    if (prop(o, 'hidden')) o.visible = false; // still solid
     if (prop(o, 'nocollide')) return;
     for (let a = o; a; a = a.parent) if (moving(a)) return;
 

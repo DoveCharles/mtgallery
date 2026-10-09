@@ -4,7 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadLevel, buildCollider } from './level.js';
 import { Player } from './player.js';
 import { PortalSystem } from './portals.js';
-import { Intro, dressStartArea } from './intro.js';
+import { Intro, dressStartArea, concreteMaterial } from './intro.js';
 import { KeypadSystem, isMovingPart } from './keypad.js';
 import { AmbientOcclusion } from './ao.js';
 import { Bloom } from './bloom.js';
@@ -13,6 +13,7 @@ import { addCards } from './cards.js';
 import { addSentenceScreens } from './screens.js';
 import { applyShadeZones } from './shade.js';
 import { addFlickeringBulb } from './bulb.js';
+import { addVideoScreen } from './video.js';
 import { Sfx } from './sfx.js';
 
 const overlay = document.getElementById('overlay');
@@ -47,6 +48,18 @@ const ZOOM_RATE = 6; // how fast the zoom eases toward its target (1/s)
 
 const ROOMS = { 5555: { DoorLeft: 'room5555-left', DoorRight: 'room5555-right' } };
 const roomBehind = (door, room) => (typeof room === 'string' ? room : room[door.mesh.name]);
+// Worlds reached from inside the rooms rather than through a door, and the portals joining
+// them up: the slits through the Dierama's doors (room 5555 right) each lead to one
+// configuration of the bedroom (see tools/build_bedroom.py).
+const EXTRA_WORLDS = ['bedroom-closed', 'bedroom-open'];
+const LINKS = [
+  ['room5555-right/SlitClosed', 'bedroom-closed/Exit'],
+  ['room5555-right/SlitOpen', 'bedroom-open/Exit'],
+];
+// Rooms' materials replaced by the starting area's concrete (Blender's had textures from
+// elsewhere), at the scale their UVs had it.
+const CONCRETE = 'concrete_layers_02';
+const ROOM_CONCRETE_REPEAT = 1;
 // Room i sits at (1000 * (i + 1), ROOM_HEIGHT, 0): raised clear of the intro's white
 // ground plane (y 0) so its floor doesn't fight with it and light can get in from outside.
 const ROOM_SPACING = 1000;
@@ -120,12 +133,22 @@ async function start() {
   const level = await loadLevel(`/levels/${levelName}.glb`, scene, (e) => {
     if (e.total) status.textContent = `Loading… ${Math.round((e.loaded / e.total) * 100)}%`;
   }, isMovingPart, isStart ? { world: 'start' } : {});
-  const roomNames = isStart ? [...new Set(Object.values(ROOMS).flatMap((r) => (typeof r === 'string' ? r : Object.values(r))))] : [];
+  const roomNames = isStart ? [...new Set([...Object.values(ROOMS).flatMap((r) => (typeof r === 'string' ? r : Object.values(r))), ...EXTRA_WORLDS])] : [];
   const rooms = await Promise.all(
     roomNames.map((name, i) =>
       loadLevel(`/levels/${name}.glb`, scene, null, undefined, { world: name, offset: new THREE.Vector3(ROOM_SPACING * (i + 1), ROOM_HEIGHT, 0) }),
     ),
   );
+
+  const roomConcrete = {}; // by side
+  for (const room of rooms) {
+    room.root.traverse((o) => {
+      if (o.isMesh && o.material.name === CONCRETE) {
+        const { side } = o.material;
+        o.material = roomConcrete[side] ??= Object.assign(concreteMaterial(ROOM_CONCRETE_REPEAT), { side });
+      }
+    });
+  }
 
   const player = new Player(camera, renderer.domElement, buildCollider([level, ...rooms]));
   if (level.spawn) player.spawnAt(level.spawn);
@@ -216,6 +239,7 @@ async function start() {
   }
   const bulbs = (await Promise.all([level, ...rooms].map((l, i) => addFlickeringBulb(l, listener, worldNames[i])))).filter(Boolean);
   for (const b of bulbs) setWorld?.lights[b.world]?.push(b.light);
+  const videos = [level, ...rooms].map((l, i) => addVideoScreen(l, listener, worldNames[i])).filter(Boolean);
   const portals = new PortalSystem(renderer, scene, [...level.portals, ...rooms.flatMap((r) => r.portals), ...(keypads?.portalDefs ?? [])], {
     world: isStart ? 'start' : undefined,
     setWorld,
@@ -223,6 +247,7 @@ async function start() {
     // each cost a whole AO pass.
     afterView: (cam, target, level, scissor, portal) => level === 0 && ao.renderFactor(cam, scissor, portal),
   });
+  for (const [a, b] of LINKS) if (portals.byId.has(a) && portals.byId.has(b)) portals.connect(a, b);
   const doorPortals = keypads?.doors.map((_, i) => portals.byId.get(`door${i}`)) ?? [];
 
   // After the intro (or after Esc), clicking the scene captures the mouse again.
@@ -244,7 +269,7 @@ async function start() {
 
   const ao = new AmbientOcclusion(renderer, scene, camera);
   // Card text too: its letter quads are solid in the AO's normal pass and would come out as black bars.
-  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText')), ...screens.flatMap((s) => s.meshes), ...bulbs.flatMap((b) => b.meshes)];
+  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText')), ...screens.flatMap((s) => s.meshes), ...bulbs.flatMap((b) => b.meshes), ...videos.flatMap((v) => v.meshes)];
   const bloom = new Bloom(renderer, scene, camera);
   if (keypads) bloom.add(keypads.glowMeshes);
   for (const b of bulbs) bloom.add(b.glows);
@@ -287,6 +312,7 @@ async function start() {
 
     for (const s of screens) s.update(dt, portals.world === s.world);
     for (const b of bulbs) b.update(dt, portals.world === b.world);
+    for (const v of videos) v.update(dt, portals.world === v.world);
     sfx?.setDrone(landed && portals.world === 'start');
     sfx?.setReverb(portals.world === 'start');
     renderer.shadowMap.needsUpdate = true;

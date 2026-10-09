@@ -141,13 +141,14 @@ export class Intro {
 
 // The walls' second material (the first is CeilingWhite): board-formed concrete, tiled
 // as in the Unity project. The maps are 2k exports of the Unity textures in public/textures.
+// (Also used for the rooms' concrete, at their own UVs' scale: see main.js.)
 const CONCRETE_REPEAT = 10;
-function concreteMaterial() {
+export function concreteMaterial(repeat = CONCRETE_REPEAT) {
   const loader = new THREE.TextureLoader();
   const load = (file, srgb) => {
     const t = loader.load(`/textures/${file}`);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.setScalar(CONCRETE_REPEAT);
+    t.repeat.setScalar(repeat);
     t.anisotropy = 8;
     if (srgb) t.colorSpace = THREE.SRGBColorSpace;
     return t;
