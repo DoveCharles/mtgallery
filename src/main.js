@@ -64,12 +64,19 @@ const CONCRETE = 'concrete_layers_02';
 const ROOM_CONCRETE_REPEAT = 1;
 // Meshes given the procedural wood (src/wood.js), cut from one block in the first's space.
 const WOOD = ['Dierama', 'DieramaDoors'];
+// The bedrooms' rug (bare in Bedroom.blend, and exported without UVs): the Unity project's
+// carpet material ("Brass 3"), a grey wool zigzag with a worn carpet's normal map, projected
+// from above at about the size Unity had it (0.48 of the image across a 0.7 m rug).
+const CARPET = ['CarpetClosed', 'CarpetOpen'];
+const CARPET_TILE = 1.5; // metres per repeat
 // Meshes that show space instead of themselves (src/stars.js): the closed bedroom's Star corridor.
 const SPACE = ['Star'];
 // Worlds drawn without the black ground, so their windows show sky all the way down.
 const NO_GROUND = new Set(['bedroom-open']);
-// Exits (the far end of a LINK) masked down to their slit's opening with space (see slitMask).
-const SLIT_MASKED = ['bedroom-closed/Exit'];
+// Exits (the far end of a LINK) masked down to their slit's opening (see slitMask): with space
+// in the closed bedroom's Star corridor, with the white of its walls in the open one's.
+const SLIT_MASKED = { 'bedroom-closed/Exit': 'space', 'bedroom-open/Exit': 'wall' };
+const WALL_MATERIAL = 'Material'; // the open bedroom corridor's white
 // Room i sits at (1000 * (i + 1), ROOM_HEIGHT, 0): raised clear of the intro's white
 // ground plane (y 0) so its floor doesn't fight with it and light can get in from outside.
 const ROOM_SPACING = 1000;
@@ -88,7 +95,38 @@ const camera = new THREE.PerspectiveCamera(PLAY_FOV, innerWidth / innerHeight, 0
 // the sun doesn't, so shaded walls pick up a cool blue and lit ones a warm white.
 const SUN_DIR = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(40), THREE.MathUtils.degToRad(150));
 
-// Space over an exit, but for a hole the size of its slit (an exit's centre is its slit's
+function carpetMaterial() {
+  const loader = new THREE.TextureLoader();
+  const load = (file, srgb) => {
+    const t = loader.load(`/textures/${file}`);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  return new THREE.MeshStandardMaterial({
+    name: 'Carpet',
+    map: load('carpet_wool_diff.jpg', true),
+    normalMap: load('carpet_wool_nor.jpg'),
+    roughness: 0.95,
+  });
+}
+
+// UVs straight down from above (world x, z), CARPET_TILE metres per repeat.
+function carpetUvs(mesh) {
+  const p = mesh.geometry.attributes.position;
+  const v = new THREE.Vector3();
+  const uv = new Float32Array(p.count * 2);
+  mesh.updateWorldMatrix(true, false);
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).applyMatrix4(mesh.matrixWorld);
+    uv[i * 2] = v.x / CARPET_TILE;
+    uv[i * 2 + 1] = -v.z / CARPET_TILE;
+  }
+  mesh.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+}
+
+// A panel over an exit, but for a hole the size of its slit (an exit's centre is its slit's
 // centre), so from the far side only the slit shows of the way back, as from the room.
 function slitMask(exit, slit, material) {
   const w = exit.width / 2 + 0.02;
@@ -168,6 +206,7 @@ async function start() {
 
   const roomConcrete = {}; // by side
   const spaceMeshes = [];
+  let carpet = null;
   let starry = null;
   for (const room of rooms) {
     room.root.traverse((o) => {
@@ -183,6 +222,12 @@ async function start() {
         const o = room.root.getObjectByName(name);
         if (o?.isMesh) o.material = wood;
       }
+    }
+    for (const name of CARPET) {
+      const o = room.root.getObjectByName(name);
+      if (!o?.isMesh) continue;
+      if (!o.geometry.attributes.uv) carpetUvs(o);
+      o.material = carpet ??= carpetMaterial();
     }
     for (const name of SPACE) {
       const o = room.root.getObjectByName(name);
@@ -292,13 +337,22 @@ async function start() {
     afterView: (cam, target, level, scissor, portal) => level === 0 && ao.renderFactor(cam, scissor, portal),
   });
   for (const [a, b] of LINKS) if (portals.byId.has(a) && portals.byId.has(b)) portals.connect(a, b);
-  for (const id of SLIT_MASKED) {
+  for (const [id, kind] of Object.entries(SLIT_MASKED)) {
     const exit = portals.byId.get(id);
     const slit = exit?.linked;
     if (!slit) continue;
-    const mask = slitMask(exit, slit, starry ??= starsMaterial());
-    scene.add(mask);
-    spaceMeshes.push(mask);
+    if (kind === 'space') {
+      const mask = slitMask(exit, slit, starry ??= starsMaterial());
+      scene.add(mask);
+      spaceMeshes.push(mask);
+    } else {
+      const room = rooms[roomNames.indexOf(id.split('/')[0])];
+      let wall = null;
+      room?.root.traverse((o) => o.isMesh && o.material.name === WALL_MATERIAL && (wall ??= o.material));
+      const mask = slitMask(exit, slit, wall ?? new THREE.MeshStandardMaterial({ color: 0xe7e7e7 }));
+      mask.receiveShadow = true;
+      scene.add(mask);
+    }
   }
   const doorPortals = keypads?.doors.map((_, i) => portals.byId.get(`door${i}`)) ?? [];
 
