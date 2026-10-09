@@ -80,7 +80,9 @@ const DARK = new Set(['bedroom-closed']);
 const DARK_SKY = 0.003;
 // The closed bedroom's coat hangers: metal shows nothing in the dark (nothing to reflect)
 // and they're out of the TV's light, so pale wire with a faint glow of its own.
-const HANGERS = { name: 'CoatHangerClosed', glow: 0.25 };
+const HANGERS = { name: 'CoatHangerClosed', glow: 0.15 };
+// And its carpet glows very faintly (its own pattern), so it shows in the dark.
+const CARPET_GLOW = { CarpetClosed: 0.1 };
 // Meshes that show space instead of themselves (src/stars.js): the closed bedroom's Star corridor.
 const SPACE = ['Star'];
 // The window at the Star corridor's end, the only thing in it besides space (see windowMask).
@@ -326,6 +328,10 @@ async function start() {
       if (!o?.isMesh) continue;
       if (!o.geometry.attributes.uv) carpetUvs(o);
       o.material = carpet ??= carpetMaterial();
+      if (name in CARPET_GLOW) {
+        o.material = o.material.clone();
+        Object.assign(o.material, { emissive: new THREE.Color(0xffffff), emissiveMap: o.material.map, emissiveIntensity: CARPET_GLOW[name] });
+      }
     }
     for (const name of SPACE) {
       const o = room.root.getObjectByName(name);
