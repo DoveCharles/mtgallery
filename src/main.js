@@ -97,7 +97,7 @@ const FRAME_FINISHES = [
 // as the Unity project hung them.
 const WAX_PAINTINGS = {
   WaxFrame: { material: 'Material.012', paintings: ['test-3-1-2', 'test-3', 'test-3-2', 'test-3 turned', 'test-3-1-2'] },
-  WaxFrame001: { material: 'Material.012', paintings: ['test-2-2', 'test-4', 'test-5', 'test-2', 'test-6'] },
+  WaxFrame001: { material: 'Material.012', paintings: ['test-2-2', 'test-4 cw', 'test-5', 'test-2', 'test-6'] },
 };
 // The bedrooms' rug (bare in Bedroom.blend, and exported without UVs): the Unity project's
 // carpet material ("Brass 3"), a grey wool zigzag with a worn carpet's normal map, projected

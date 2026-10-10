@@ -13,6 +13,8 @@ const CROPS = {
   'test-3-2': { scale: [1, 0.72], offset: [0, 0.13] },
 };
 const WHOLE = { scale: [1, 1], offset: [0, 0] };
+// Quarter turns clockwise, by the word after a painting's name.
+const TURNS = { cw: 1, turned: 2, ccw: 3 };
 const GAP = 0.3; // m, at least, between one painting and the next
 
 const textures = {};
@@ -25,7 +27,8 @@ function texture(image) {
 }
 
 // Replaces `mesh` (a row's paintings) with one mesh per painting, showing `paintings` left to
-// right as you face the row: image names, each with " turned" after it to hang it upside down.
+// right as you face the row: image names, each with " cw" after it to hang it a quarter turn
+// clockwise, " turned" upside down or " ccw" a quarter turn anticlockwise.
 export function hangPaintings(mesh, paintings) {
   mesh.updateWorldMatrix(true, false);
   const g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
@@ -49,7 +52,7 @@ export function hangPaintings(mesh, paintings) {
   }
 
   groups.forEach((group, i) => {
-    const [image, turned] = (paintings[i] ?? paintings[0]).split(' ');
+    const [image, turn] = (paintings[i] ?? paintings[0]).split(' ');
     const { scale, offset } = CROPS[image] ?? WHOLE;
     const verts = group.t.flatMap((t) => [t * 3, t * 3 + 1, t * 3 + 2]);
     const box = { u: [Infinity, -Infinity], v: [Infinity, -Infinity] };
@@ -65,7 +68,7 @@ export function hangPaintings(mesh, paintings) {
       nor.set([normal.getX(k), normal.getY(k), normal.getZ(k)], j * 3);
       let u = (across[k] - box.u[0]) / (box.u[1] - box.u[0]);
       let v = (world[k].y - box.v[0]) / (box.v[1] - box.v[0]);
-      if (turned) (u = 1 - u), (v = 1 - v);
+      for (let q = TURNS[turn] ?? 0; q > 0; q--) [u, v] = [1 - v, u];
       uv.set([offset[0] + scale[0] * u, offset[1] + scale[1] * v], j * 2);
     });
     const geometry = new THREE.BufferGeometry();
