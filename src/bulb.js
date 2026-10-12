@@ -9,10 +9,10 @@ import * as THREE from 'three';
 // the buzz's volume, and every time the bulb comes back on (crosses ON) it clinks. The light
 // (and the glass) is orange, shimmering slowly between deep orange and gold, iridescent.
 
-const STEADY = [0.6, 4]; // s the bulb burns between stutters
-const BURST = [2, 7]; // cut-outs in a stutter
-const CUT = [0.02, 0.09]; // s each cut-out lasts
-const CATCH = [0.03, 0.2]; // s it catches for in between
+const STEADY = [4, 12]; // s the bulb burns between stutters
+const BURST = [1, 4]; // cut-outs in a stutter
+const CUT = [0.02, 0.06]; // s each cut-out lasts
+const CATCH = [0.02, 0.08]; // s it catches for in between
 const BLACKOUT = 0.15; // chance a stutter ends in a blackout
 const BLACKOUT_LENGTH = [0.3, 1.6]; // s
 const WAVER = 0.04; // the steady burn's wavering
@@ -23,6 +23,8 @@ const GLASS_EASE = 6;
 const FILAMENT_COLOR = new THREE.Color(1, 0.5913, 0.1569);
 const FILAMENT_GLOW = 220; // emissive strength at full (as exported from Blender)
 const GLASS_GLOW = 0.4; // emissive intensity at full
+// The glass: nearly clear face-on, turning reflective towards its silhouette (Fresnel).
+const GLASS = { opacity: 0.08, edge: 0.85, roughness: 0.03, envMapIntensity: 1.6 };
 // The light's colour, as HSL: amber orange, its hue drifting by up to SHIMMER either way
 // (deeper orange to gold) over a few seconds.
 const LIGHT_HSL = { h: 0.095, s: 0.95, l: 0.6 };
@@ -41,7 +43,36 @@ const CLINK_RANGE = 17;
 
 let sounds;
 
-export async function addFlickeringBulb(level, listener, world) {
+// A thin clear glass, its edges more opaque (so its reflections show there) than its middle.
+function glassMaterial(old, envMap) {
+  const m = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: GLASS.opacity,
+    roughness: GLASS.roughness,
+    metalness: 0,
+    ior: 1.5,
+    specularIntensity: 1,
+    clearcoat: 1,
+    clearcoatRoughness: 0.02,
+    envMap,
+    envMapIntensity: GLASS.envMapIntensity,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    emissive: old.emissive?.clone() ?? new THREE.Color(),
+  });
+  m.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <opaque_fragment>',
+      `float glassFresnel = pow(1.0 - saturate(abs(dot(normalize(vViewPosition), normal))), 3.0);
+      diffuseColor.a = mix(diffuseColor.a, 1.0, glassFresnel * ${GLASS.edge.toFixed(2)});
+      #include <opaque_fragment>`,
+    );
+  };
+  return m;
+}
+
+export async function addFlickeringBulb(level, listener, world, envMap) {
   const bulb = level.root.getObjectByName('Lightbulb');
   const filament = bulb?.getObjectByName('Filament');
   if (!filament) return null;
@@ -60,7 +91,8 @@ export async function addFlickeringBulb(level, listener, world) {
   }
   const glass = bulb.isMesh ? bulb : null;
   if (glass) {
-    glass.material = glass.material.clone(); // its glow's colour is set as it shimmers
+    glass.material = glassMaterial(glass.material, envMap); // its glow's colour is set as it shimmers
+    glass.renderOrder = 1; // after what's inside it
   }
   // The bulb's own parts would block its light.
   bulb.traverse((o) => o.isMesh && (o.castShadow = false));

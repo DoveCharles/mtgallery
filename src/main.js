@@ -559,6 +559,8 @@ async function start() {
   let floor = null;
   let floorReveal = 0;
   let setWorld;
+  // A studio's softboxes, for the keypads' steel and the lightbulb's glass to reflect.
+  const roomEnv = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
   if (isStart) {
     let button, logo, ground;
     const sky = addSky();
@@ -621,7 +623,7 @@ async function start() {
       camera,
       dom: renderer.domElement,
       player,
-      envMap: new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture,
+      envMap: roomEnv,
       codes: ROOMS,
       sfx,
       onOpen: (door, room) => portals.connect(`door${keypads.doors.indexOf(door)}`, `${roomBehind(door, room)}/Entrance`),
@@ -653,7 +655,7 @@ async function start() {
       setWorld?.lights[s.world]?.push(l);
     }
   }
-  const bulbs = (await Promise.all([level, ...rooms].map((l, i) => addFlickeringBulb(l, listener, worldNames[i])))).filter(Boolean);
+  const bulbs = (await Promise.all([level, ...rooms].map((l, i) => addFlickeringBulb(l, listener, worldNames[i], roomEnv)))).filter(Boolean);
   for (const b of bulbs) setWorld?.lights[b.world]?.push(b.light);
   const tvLights = tvScreens.map(tvLight);
   for (const l of tvLights) setWorld?.lights[TV.room]?.push(l);
