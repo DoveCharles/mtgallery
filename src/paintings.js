@@ -16,6 +16,9 @@ const WHOLE = { scale: [1, 1], offset: [0, 0] };
 // Quarter turns clockwise, by the word after a painting's name.
 const TURNS = { cw: 1, turned: 2, ccw: 3 };
 const GAP = 0.3; // m, at least, between one painting and the next
+// Each painting's backing (in the frame's own finish) fills the frame behind it, so the wall
+// doesn't show through the seams: this much bigger than the painting, this far behind it.
+const BACKING = { size: 1.5, behind: 0.003 }; // ×, m
 
 const textures = {};
 function texture(image) {
@@ -29,8 +32,8 @@ function texture(image) {
 // Replaces `mesh` (a row's paintings) with one mesh per painting, showing `paintings` left to
 // right as you face the row: image names, each with " cw" after it to hang it a quarter turn
 // clockwise, " turned" upside down or " ccw" a quarter turn anticlockwise, and/or a number
-// (" 0.9") to show it that much as bright as the rest.
-export function hangPaintings(mesh, paintings) {
+// (" 0.9") to show it that much as bright as the rest. Each is backed in `backing` (a material).
+export function hangPaintings(mesh, paintings, backing) {
   mesh.updateWorldMatrix(true, false);
   const g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
   const position = g.attributes.position;
@@ -89,6 +92,16 @@ export function hangPaintings(mesh, paintings) {
     painting.castShadow = mesh.castShadow;
     painting.receiveShadow = mesh.receiveShadow;
     mesh.parent.add(painting);
+
+    if (!backing) return;
+    const centre = verts.reduce((c, k) => c.add(world[k]), new THREE.Vector3()).divideScalar(verts.length);
+    const back = new THREE.Mesh(new THREE.PlaneGeometry((box.u[1] - box.u[0]) * BACKING.size, (box.v[1] - box.v[0]) * BACKING.size), backing);
+    back.name = `${painting.name}_backing`;
+    back.position.copy(centre).addScaledVector(facing, -BACKING.behind);
+    back.lookAt(centre.clone().add(facing));
+    back.layers.mask = mesh.layers.mask;
+    back.receiveShadow = mesh.receiveShadow;
+    mesh.parent.attach(back);
   });
   mesh.removeFromParent();
 }

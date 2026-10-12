@@ -468,7 +468,9 @@ async function start() {
     for (const [name, { material, paintings }] of Object.entries(WAX_PAINTINGS)) {
       const rows = [];
       room.root.getObjectByName(name)?.traverse((o) => o.isMesh && o.material.name === material && rows.push(o));
-      for (const row of rows) hangPaintings(row, paintings);
+      const frame = FRAME_FINISHES.find((f) => f.object === name);
+      const backing = frame && finishes[`${frame.finish}/${frame.materials[0]}`];
+      for (const row of rows) hangPaintings(row, paintings, backing);
     }
     if (roomNames[rooms.indexOf(room)] === TV.room) room.root.traverse((o) => {
       if (!o.isMesh || o.material.name !== TV.material) return;
