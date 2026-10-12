@@ -17,6 +17,9 @@ export function addVideoScreen(level, world) {
   const texture = new THREE.VideoTexture(video);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.flipY = false; // glTF UVs
+  // The cube in the video sits 19.5px (of 960) right of the frame's middle: shifted back so it's
+  // centred on the screen, and so straight behind the plinth's cube (the edges it pulls in are black).
+  texture.offset.x = 19.5 / 960;
   plane.material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, toneMapped: false });
   plane.castShadow = false;
 
