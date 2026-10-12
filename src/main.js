@@ -25,6 +25,16 @@ const overlay = document.getElementById('overlay');
 const status = document.getElementById('status');
 const crosshair = document.getElementById('crosshair');
 
+// Mobile browsers restore the old pinch-zoom on refresh. Rewriting the viewport tag snaps it back to 1x.
+const viewport = document.querySelector('meta[name=viewport]');
+const resetZoom = () => {
+  const content = viewport.content;
+  viewport.content = content + ', minimum-scale=1';
+  requestAnimationFrame(() => (viewport.content = content));
+};
+addEventListener('pageshow', resetZoom);
+resetZoom();
+
 // ?level=test loads the portal prototype instead of the starting area.
 const levelName = new URLSearchParams(location.search).get('level') ?? 'start';
 
