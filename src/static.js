@@ -77,3 +77,41 @@ totalEmissiveRadiance *= mix(1.0, grainValue * 2.0, staticAmount);`);
 }
 
 export const setStaticTime = (t) => (time.value = t);
+
+// The static's hiss: white noise from the screen, made here (a few seconds, looped), with the
+// lowest rumble and the harshest top cut so it sounds like a set rather than a test tone.
+// Quiet, and only heard close by: full volume within HISS_REF, nothing past HISS_RANGE.
+const HISS_VOLUME = 0.05;
+const HISS_REF = 1; // m
+const HISS_RANGE = 7; // m
+let hissBuffer;
+
+export function addStaticHiss(screen, listener) {
+  const ctx = listener.context;
+  if (!hissBuffer) {
+    hissBuffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
+    const data = hissBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const low = ctx.createBiquadFilter();
+  low.type = 'highpass';
+  low.frequency.value = 250;
+  const high = ctx.createBiquadFilter();
+  high.type = 'lowpass';
+  high.frequency.value = 7000;
+  const sound = new THREE.PositionalAudio(listener);
+  sound.setBuffer(hissBuffer).setLoop(true).setVolume(HISS_VOLUME).setFilters([low, high]);
+  sound.setDistanceModel('linear');
+  sound.setRefDistance(HISS_REF);
+  sound.setMaxDistance(HISS_RANGE);
+  screen.geometry.computeBoundingBox();
+  screen.geometry.boundingBox.getCenter(sound.position);
+  screen.add(sound);
+  return {
+    // `here`: the player is in the TV's world, so it can be heard.
+    update(here) {
+      if (here && ctx.state === 'running' && !sound.isPlaying) sound.play();
+      else if (!here && sound.isPlaying) sound.pause();
+    },
+  };
+}

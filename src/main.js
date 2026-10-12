@@ -18,7 +18,7 @@ import { woodMaterial, oakMaterial } from './wood.js';
 import { steelMaterial } from './steel.js';
 import { hangPaintings } from './paintings.js';
 import { starsMaterial } from './stars.js';
-import { staticMaterial, addStatic, setStaticTime } from './static.js';
+import { staticMaterial, addStatic, setStaticTime, addStaticHiss } from './static.js';
 import { Sfx } from './sfx.js';
 
 const overlay = document.getElementById('overlay');
@@ -608,7 +608,7 @@ async function start() {
       logo,
       onPress: () => {
         renderer.domElement.requestPointerLock?.()?.catch?.(() => {});
-        sfx.play('drop', { late: DROP_LATE });
+        sfx.drop({ late: DROP_LATE });
       },
       onLanded: () => (landed = true),
       onDone: () => {
@@ -659,6 +659,7 @@ async function start() {
   for (const b of bulbs) setWorld?.lights[b.world]?.push(b.light);
   const tvLights = tvScreens.map(tvLight);
   for (const l of tvLights) setWorld?.lights[TV.room]?.push(l);
+  const tvHiss = tvScreens.map((s) => addStaticHiss(s, listener));
   const galleryRoom = rooms[roomNames.indexOf(GALLERY.world)];
   const gallery = galleryRoom && addGallerySpots(galleryRoom.root);
   for (const l of gallery?.lights ?? []) setWorld?.lights[GALLERY.world]?.push(l);
@@ -777,6 +778,7 @@ async function start() {
     for (const s of screens) s.update(dt, portals.world === s.world);
     for (const b of bulbs) b.update(dt, portals.world === b.world);
     for (const v of videos) v.update(dt, portals.world === v.world);
+    for (const h of tvHiss) h.update(portals.world === TV.room);
     sfx?.setDrone(landed && portals.world === 'start');
     sfx?.setReverb(portals.world === 'start');
     renderer.shadowMap.needsUpdate = true;

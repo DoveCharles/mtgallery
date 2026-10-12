@@ -26,10 +26,13 @@ const FILES = {
 const CLICKS = ['click1', 'click2', 'click3', 'click4', 'click5', 'click6'];
 const STEPS = Array.from({ length: 12 }, (_, i) => `step${i + 1}`);
 for (const s of STEPS) FILES[s] = `${s}.ogg`;
-const DRONE_VOLUME = 0.166; // as on the Unity AudioSource
+const DRONE_VOLUME = 0.07; // (0.166 on the Unity AudioSource)
 const DRONE_FADE = 1.5; // seconds, in and out
 const REF_DISTANCE = 1; // m: full volume within this, then falling off with distance
 const INCORRECT_VOLUME = 0.35;
+// The drop: loud, with its lows boosted (a low shelf, then a peak on the sub-bass), and a
+// limiter after so the boost can't clip.
+const DROP = { volume: 4, shelf: { frequency: 160, gain: 12 }, sub: { frequency: 55, gain: 6, Q: 1 } };
 // Footsteps, as the Unity FootstepAudio was set up (its AudioSource was muted, so the
 // volume is new).
 const STEP_INTERVAL = 0.6; // seconds, at walking speed
@@ -69,7 +72,7 @@ export class Sfx {
   }
 
   // `late`: seconds the sound may still start after it was due, if it hasn't loaded yet.
-  play(name, { at, volume = 1, rate = 1, refDistance = REF_DISTANCE, late = 0, offset = 0 } = {}) {
+  play(name, { at, volume = 1, rate = 1, refDistance = REF_DISTANCE, late = 0, offset = 0, bass = null } = {}) {
     const buffer = this.buffers[name];
     if (!this.ready) {
       // The first click both resumes the context and can be what sets a sound off; a sound
@@ -82,7 +85,7 @@ export class Sfx {
         const due = performance.now();
         this.loading[name]?.then((b) => {
           const behind = (performance.now() - due) / 1000;
-          if (b && behind < late) this.play(name, { at, volume, rate, refDistance, offset: offset + behind * rate });
+          if (b && behind < late) this.play(name, { at, volume, rate, refDistance, bass, offset: offset + behind * rate });
         });
       }
       return;
@@ -90,6 +93,7 @@ export class Sfx {
     const sound = at ? new THREE.PositionalAudio(this.listener) : new THREE.Audio(this.listener);
     sound.setBuffer(buffer).setVolume(volume).setPlaybackRate(rate);
     sound.offset = offset;
+    if (bass) sound.setFilters(bassBoost(this.listener.context, bass));
     if (at) {
       sound.setRefDistance(refDistance);
       at.add(sound);
@@ -101,6 +105,10 @@ export class Sfx {
       sound.disconnect();
     };
     sound.play();
+  }
+
+  drop(opts) {
+    this.play('drop', { ...opts, bass: DROP });
   }
 
   click(at) {
@@ -157,6 +165,28 @@ export class Sfx {
     gain.setValueAtTime(gain.value, now);
     gain.linearRampToValueAtTime(on ? DRONE_VOLUME : 0, now + DRONE_FADE);
   }
+}
+
+// Gain, a low shelf and a sub-bass peak, then a limiter: the filters for `play`'s `bass`.
+function bassBoost(ctx, { volume, shelf, sub }) {
+  const gain = ctx.createGain();
+  gain.gain.value = volume;
+  const lowShelf = ctx.createBiquadFilter();
+  lowShelf.type = 'lowshelf';
+  lowShelf.frequency.value = shelf.frequency;
+  lowShelf.gain.value = shelf.gain;
+  const peak = ctx.createBiquadFilter();
+  peak.type = 'peaking';
+  peak.frequency.value = sub.frequency;
+  peak.gain.value = sub.gain;
+  peak.Q.value = sub.Q;
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -3;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.002;
+  limiter.release.value = 0.2;
+  return [gain, lowShelf, peak, limiter];
 }
 
 // Seconds from the first to the last sample that isn't (near) silent.
