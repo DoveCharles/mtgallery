@@ -104,25 +104,32 @@ export class Player {
     base.addEventListener('pointerup', releaseStick);
     base.addEventListener('pointercancel', releaseStick);
 
-    let lookId = null;
-    let last = null;
+    // One finger looks around; two fingers dragged up/down raise/lower the camera (the scroll wheel on desktop).
+    const touches = new Map(); // pointerId -> last {x, y}, fingers that went down on the canvas
     this.dom.addEventListener('pointerdown', (e) => {
-      if (e.pointerType !== 'touch' || lookId !== null) return;
-      lookId = e.pointerId;
-      last = { x: e.clientX, y: e.clientY };
+      if (e.pointerType !== 'touch' || touches.size >= 2) return;
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     });
     addEventListener('pointermove', (e) => {
-      if (e.pointerId !== lookId) return;
-      if (this.enabled) {
-        this.yaw -= (e.clientX - last.x) * this.lookSpeed * 2;
-        this.pitch -= (e.clientY - last.y) * this.lookSpeed * 2;
+      const last = touches.get(e.pointerId);
+      if (!last) return;
+      const dx = e.clientX - last.x;
+      const dy = e.clientY - last.y;
+      last.x = e.clientX;
+      last.y = e.clientY;
+      if (!this.enabled) return;
+      if (touches.size === 1) {
+        this.yaw -= dx * this.lookSpeed * 2;
+        this.pitch -= dy * this.lookSpeed * 2;
         this.pitch = THREE.MathUtils.clamp(this.pitch, -1.5, 1.5);
+      } else {
+        // Both fingers report their moves, so this totals 0.004 per pixel the pair travels. Dragging up raises the camera.
+        this.eyeTarget = THREE.MathUtils.clamp(this.eyeTarget - dy * 0.002, this.minEye, this.maxEye);
       }
-      last = { x: e.clientX, y: e.clientY };
     });
-    const releaseLook = (e) => e.pointerId === lookId && (lookId = null);
-    addEventListener('pointerup', releaseLook);
-    addEventListener('pointercancel', releaseLook);
+    const releaseTouch = (e) => touches.delete(e.pointerId);
+    addEventListener('pointerup', releaseTouch);
+    addEventListener('pointercancel', releaseTouch);
   }
 
   // Start at an object's position, looking along its local -Z (Blender local +Y).
