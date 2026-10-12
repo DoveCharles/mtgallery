@@ -9,11 +9,11 @@ import * as THREE from 'three';
 // the buzz's volume, and every time the bulb comes back on (crosses ON) it clinks. The light
 // (and the glass) is orange, shimmering slowly between deep orange and gold, iridescent.
 
-const DARK = [4, 12]; // s the bulb stays off between bursts
-const BURST = [1, 4]; // flashes in a burst
+const DARK = [0.8, 3.5]; // s the bulb stays off between bursts
+const BURST = [2, 7]; // flashes in a burst
 const FLASH = [0.02, 0.08]; // s each flash lasts
 const GAP = [0.02, 0.06]; // s dark between flashes
-const HOLD = 0.15; // chance a burst ends with the bulb catching for a moment
+const HOLD = 0.2; // chance a burst ends with the bulb catching for a moment
 const HOLD_LENGTH = [0.3, 1.2]; // s
 const WAVER = 0.04; // the steady burn's wavering
 const RISE = 50; // per second, as the filament heats
