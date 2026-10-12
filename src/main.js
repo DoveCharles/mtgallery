@@ -391,11 +391,14 @@ function addGallerySpots(room) {
     const paintingsY = hung.isEmpty() ? centre.y : hung.getCenter(new THREE.Vector3()).y;
     const facing = Math.sign(middle.z - centre.z); // the frames hang on walls across z
     const z = facing > 0 ? b.min.z + frames.margin : b.max.z - frames.margin; // the wall, behind them
-    // The light's square is cut on the frames' faces: cut on the wall, the light (from high up)
-    // missed the bottoms of the frames standing out from it.
+    // The light comes from high up, so its square on the wall reaches down far enough to light
+    // the frames' bottom edges, standing out from it (no further: the frames cast no shadow).
+    const from = new THREE.Vector3(centre.x, top, z + facing * frames.out);
     const front = facing > 0 ? b.max.z - frames.margin : b.min.z + frames.margin;
-    const rect = [[b.min.x, b.min.y], [b.max.x, b.min.y], [b.max.x, b.max.y], [b.min.x, b.max.y]].map(([x, y]) => new THREE.Vector3(x, y, front));
-    const light = squareSpot(new THREE.Vector3(centre.x, top, z + facing * frames.out), rect, frames);
+    const edge = b.min.y + frames.margin;
+    const bottom = Math.min(b.min.y, from.y + ((z - from.z) / (front - from.z)) * (edge - from.y) - 0.05);
+    const rect = [[b.min.x, bottom], [b.max.x, bottom], [b.max.x, b.max.y], [b.min.x, b.max.y]].map(([x, y]) => new THREE.Vector3(x, y, z));
+    const light = squareSpot(from, rect, frames);
     light.userData.intensity = 0;
     lights.push(light);
     return { light, x: centre.x, halfWidth: (b.max.x - b.min.x) / 2, z, paintingsY, level: 0, cover, coverMeshes, shown: true };
