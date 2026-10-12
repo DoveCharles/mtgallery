@@ -404,7 +404,7 @@ export class KeypadSystem {
       const normal = size.x < size.z ? new THREE.Vector3(Math.sign(_v.x), 0, 0) : new THREE.Vector3(0, 0, Math.sign(_v.z));
       const pad = new Keypad(ret, { normal, state: 'closed' }, mats);
       pad.frame();
-      pad.armed = true;
+      pad.armed = false; // the spawn is in reach; it arms once you've walked away
       this.keypads.push(pad);
     }
 
