@@ -28,7 +28,8 @@ function texture(image) {
 
 // Replaces `mesh` (a row's paintings) with one mesh per painting, showing `paintings` left to
 // right as you face the row: image names, each with " cw" after it to hang it a quarter turn
-// clockwise, " turned" upside down or " ccw" a quarter turn anticlockwise.
+// clockwise, " turned" upside down or " ccw" a quarter turn anticlockwise, and/or a number
+// (" 0.9") to show it that much as bright as the rest.
 export function hangPaintings(mesh, paintings) {
   mesh.updateWorldMatrix(true, false);
   const g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
@@ -52,7 +53,9 @@ export function hangPaintings(mesh, paintings) {
   }
 
   groups.forEach((group, i) => {
-    const [image, turn] = (paintings[i] ?? paintings[0]).split(' ');
+    const [image, ...words] = (paintings[i] ?? paintings[0]).split(' ');
+    const turn = words.find((w) => w in TURNS);
+    const brightness = Number(words.find((w) => !(w in TURNS)) ?? 1);
     const { scale, offset } = CROPS[image] ?? WHOLE;
     const verts = group.t.flatMap((t) => [t * 3, t * 3 + 1, t * 3 + 2]);
     const box = { u: [Infinity, -Infinity], v: [Infinity, -Infinity] };
@@ -76,7 +79,7 @@ export function hangPaintings(mesh, paintings) {
     geometry.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     // Unlit, as the Unity project's (URP's Unlit shader): the image as it is, whatever the light.
-    const material = new THREE.MeshBasicMaterial({ name: 'WaxPainting', map: texture(image), side: mesh.material.side });
+    const material = new THREE.MeshBasicMaterial({ name: 'WaxPainting', map: texture(image), color: new THREE.Color(brightness, brightness, brightness), side: mesh.material.side });
     const painting = new THREE.Mesh(geometry, material);
     painting.name = `${mesh.name}_${i}`;
     painting.position.copy(mesh.position);
