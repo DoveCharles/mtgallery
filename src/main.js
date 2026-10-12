@@ -119,11 +119,11 @@ const CARPET_TILE = 1.5; // metres per repeat
 // The closed bedroom's TV (Cube): its screen (Material.008) shows static (src/static.js).
 // The open bedroom's TV keeps its own material.
 const TV = { room: 'bedroom-closed', object: 'Cube', material: 'Material.008' };
-const TV_LIGHT = { colour: 0xd6deff, intensity: 2.5, flicker: 0.25 }; // the screen's glow on the room
+const TV_LIGHT = { colour: 0xd6deff, intensity: 3, flicker: 0.25 }; // the screen's glow on the room
 // Worlds in the dark: no sun, bounce light or lights of their own (from the .blend), and only
 // a trace of sky light, so the closed bedroom is lit by its TV.
 const DARK = new Set(['bedroom-closed']);
-const DARK_SKY = 0.003;
+const DARK_SKY = 0.005;
 // The closed bedroom's coat hangers: metal shows nothing in the dark (nothing to reflect)
 // and they're out of the TV's light, so pale wire with a faint glow of its own, flickering a
 // little with the TV's static.
@@ -211,7 +211,9 @@ function windowMask(corridor, win, material) {
   return mask;
 }
 
-// UVs straight down from above (world x, z), CARPET_TILE metres per repeat.
+// UVs straight down from above (world x, z), CARPET_TILE metres per repeat, but with height
+// added along z, so where the rug turns up against the door (towards +z) its pattern carries
+// on up it instead of stretching into streaks.
 function carpetUvs(mesh) {
   const p = mesh.geometry.attributes.position;
   const v = new THREE.Vector3();
@@ -220,7 +222,7 @@ function carpetUvs(mesh) {
   for (let i = 0; i < p.count; i++) {
     v.fromBufferAttribute(p, i).applyMatrix4(mesh.matrixWorld);
     uv[i * 2] = v.x / CARPET_TILE;
-    uv[i * 2 + 1] = -v.z / CARPET_TILE;
+    uv[i * 2 + 1] = -(v.z + v.y) / CARPET_TILE;
   }
   mesh.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
 }
@@ -802,7 +804,7 @@ async function start() {
     renderer.domElement.requestPointerLock?.()?.catch?.(() => {});
   });
 
-  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, bloom, intro: () => intro, keypads: () => keypads, sfx };
+  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, bloom, intro: () => intro, keypads: () => keypads, setWorld: (w) => setWorld?.(w), sfx };
 }
 
 // Compiles every shader and allocates every render target the game can need while still

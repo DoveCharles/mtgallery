@@ -48,6 +48,12 @@ RAMP_RUN = 0.9  # length of each slope
 OPEN_END = -8.089  # inner face of the end wall
 OPEN_CUT = {"x": (-0.1, 2.4), "y": (-8.3, -8.08)}
 
+# Closed: the rug rucked up against the door, pushed CARPET_PUSH further towards it (-y), with
+# its upturned edge flat to the door's face (y = DOOR_FACE), just clear of it.
+CARPET = "CarpetClosed"
+CARPET_PUSH = 0.04
+DOOR_FACE = -2.220
+
 
 def apply_modifiers(o):
     """Bakes an object's modifiers into its mesh (so its faces can be edited as seen)."""
@@ -134,7 +140,39 @@ def bounds(o):
     return [(min(p[i] for p in pts), max(p[i] for p in pts)) for i in range(3)]
 
 
+def push_carpet():
+    """Slides the closed bedroom's rug up against the door: its control mesh is moved and its
+    upturned edge stood up straighter, then backed off until its finished surface (subdivided,
+    displaced and thickened) is clear of the door."""
+    o = bpy.data.objects[CARPET]
+    m = o.matrix_world
+    mi = m.inverted()
+    for v in o.data.vertices:
+        w = m @ v.co
+        w.y -= CARPET_PUSH
+        if w.z > 0.1:
+            w.y = max(w.y, DOOR_FACE + 0.012)
+        v.co = mi @ w
+    for _ in range(10):
+        bpy.context.view_layer.update()
+        dg = bpy.context.evaluated_depsgraph_get()
+        e = o.evaluated_get(dg)
+        me = e.to_mesh()
+        over = DOOR_FACE + 0.002 - min((m @ v.co).y for v in me.vertices)
+        e.to_mesh_clear()
+        if over <= 0:
+            return
+        for v in o.data.vertices:
+            w = m @ v.co
+            if w.y < DOOR_FACE + 0.1:
+                w.y += over
+                v.co = mi @ w
+    raise SystemExit(f"Couldn't keep {CARPET} clear of the door")
+
+
 def build_closed(collection):
+    push_carpet()
+
     # The exit: the Star corridor's end wall, cut away below the top of the portal.
     star = bpy.data.objects["Star"]
     (sx, sy, _) = bounds(star)
