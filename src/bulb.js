@@ -2,19 +2,19 @@ import * as THREE from 'three';
 
 // The flickering lightbulb (the "Lightbulb" object, with its "Filament" child), ported from
 // the old Unity RealisticFlickerEmissionLightAndGlass with the values it had in the scene.
-// Like a bulb with a loose contact, it mostly burns steadily (with a faint wavering), then
-// stutters: a burst of quick cut-outs and catches, now and then a longer blackout that it
-// sputters back out of. The filament heats faster than it cools, and the glass follows more
+// Like a dead bulb with a loose contact, it's mostly dark, then now and then it arcs: a
+// burst of quick flashes, now and then one that catches and burns for a moment before it
+// cuts out again. The filament heats faster than it cools, and the glass follows more
 // slowly still. The brightness drives the filament's glow, the glass's, a point light and
 // the buzz's volume, and every time the bulb comes back on (crosses ON) it clinks. The light
 // (and the glass) is orange, shimmering slowly between deep orange and gold, iridescent.
 
-const STEADY = [4, 12]; // s the bulb burns between stutters
-const BURST = [1, 4]; // cut-outs in a stutter
-const CUT = [0.02, 0.06]; // s each cut-out lasts
-const CATCH = [0.02, 0.08]; // s it catches for in between
-const BLACKOUT = 0.15; // chance a stutter ends in a blackout
-const BLACKOUT_LENGTH = [0.3, 1.6]; // s
+const DARK = [4, 12]; // s the bulb stays off between bursts
+const BURST = [1, 4]; // flashes in a burst
+const FLASH = [0.02, 0.08]; // s each flash lasts
+const GAP = [0.02, 0.06]; // s dark between flashes
+const HOLD = 0.15; // chance a burst ends with the bulb catching for a moment
+const HOLD_LENGTH = [0.3, 1.2]; // s
 const WAVER = 0.04; // the steady burn's wavering
 const RISE = 50; // per second, as the filament heats
 const FALL = 30; // per second, as it cools
@@ -126,17 +126,13 @@ export async function addFlickeringBulb(level, listener, world, envMap) {
   // The flicker to come, as [brightness, seconds] steps.
   const steps = [];
   const plan = () => {
-    steps.push([rand([0.9, 1]), rand(STEADY)]);
-    const cuts = THREE.MathUtils.randInt(...BURST);
-    for (let i = 0; i < cuts; i++) {
-      steps.push([rand([0, 0.15]), rand(CUT)]);
-      if (i < cuts - 1) steps.push([rand([0.5, 1]), rand(CATCH)]);
+    steps.push([0, rand(DARK)]);
+    const flashes = THREE.MathUtils.randInt(...BURST);
+    for (let i = 0; i < flashes; i++) {
+      if (i) steps.push([rand([0, 0.1]), rand(GAP)]);
+      steps.push([rand([0.5, 1]), rand(FLASH)]);
     }
-    if (Math.random() < BLACKOUT) {
-      steps.push([0, rand(BLACKOUT_LENGTH)]);
-      // Sputtering back on.
-      for (let i = THREE.MathUtils.randInt(1, 3); i > 0; i--) steps.push([rand([0.3, 0.8]), rand(CUT)], [rand([0, 0.1]), rand(CUT)]);
-    }
+    if (Math.random() < HOLD) steps.push([rand([0, 0.1]), rand(GAP)], [rand([0.9, 1]), rand(HOLD_LENGTH)]);
   };
 
   let brightness = 0;
