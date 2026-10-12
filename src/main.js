@@ -808,6 +808,65 @@ async function start() {
     renderer.domElement.requestPointerLock?.()?.catch?.(() => {});
   });
 
+  // DEBUG (remove before the final version): in room 5555 right, a slider for the plinth's
+  // height (read out as the cube's centre above the floor) and a button that puts the camera
+  // back at its default height. Esc out of pointer lock to use them.
+  const plinthRoot = galleryRoom?.root;
+  const plinthMesh = plinthRoot?.getObjectByName('Plinth');
+  const plinthCube = plinthRoot?.getObjectByName('Cube');
+  if (plinthMesh?.isMesh && plinthCube) {
+    plinthRoot.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(plinthMesh);
+    const cubeBox = new THREE.Box3().setFromObject(plinthCube);
+    const floorY = box.min.y;
+    const mid = (box.min.y + box.max.y) / 2;
+    const startCentre = (cubeBox.min.y + cubeBox.max.y) / 2 - floorY;
+    const cubeHalf = (cubeBox.max.y - cubeBox.min.y) / 2;
+    const pos = plinthMesh.geometry.attributes.position;
+    const original = pos.array.slice();
+    const cubeWorld = plinthCube.getWorldPosition(new THREE.Vector3());
+    const M = plinthMesh.matrixWorld.clone();
+    const Minv = M.clone().invert();
+    const defaultEye = player.eyeTarget;
+
+    const panel = document.createElement('div');
+    panel.style.cssText = 'position:fixed;top:12px;right:12px;z-index:1000;padding:10px 12px;background:rgba(0,0,0,.7);color:#fff;font:12px/1.5 system-ui,sans-serif;border-radius:6px;display:none;width:220px';
+    panel.innerHTML = `<div>Cube centre: <b data-v></b> m <span style="opacity:.6">(plinth top <span data-t></span>)</span></div>
+      <input type="range" min="0.5" max="4" step="0.01" style="width:100%">
+      <div>Eye height: <b data-e></b> m</div>
+      <button type="button" style="margin-top:4px;font:inherit">Reset camera height</button>`;
+    document.body.appendChild(panel);
+    const slider = panel.querySelector('input');
+    const [valueOut, topOut, eyeOut] = ['[data-v]', '[data-t]', '[data-e]'].map((s) => panel.querySelector(s));
+    for (const ev of ['keydown', 'pointerdown', 'wheel']) panel.addEventListener(ev, (e) => e.stopPropagation());
+
+    const setHeight = (centre) => {
+      const d = centre - startCentre;
+      const v = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i++) {
+        v.fromArray(original, i * 3).applyMatrix4(M);
+        if (v.y > mid) v.y += d;
+        v.applyMatrix4(Minv).toArray(pos.array, i * 3);
+      }
+      pos.needsUpdate = true;
+      plinthMesh.geometry.computeBoundingBox();
+      plinthMesh.geometry.computeBoundingSphere();
+      const w = cubeWorld.clone();
+      w.y += d;
+      plinthCube.position.copy(plinthCube.parent.worldToLocal(w));
+      valueOut.textContent = centre.toFixed(2);
+      topOut.textContent = (centre - cubeHalf).toFixed(2);
+    };
+    slider.value = startCentre.toFixed(2);
+    setHeight(startCentre);
+    slider.addEventListener('input', () => setHeight(+slider.value));
+    panel.querySelector('button').addEventListener('click', () => (player.eyeTarget = player.eyeHeight = defaultEye));
+    setInterval(() => {
+      panel.style.display = portals.world === GALLERY.world ? '' : 'none';
+      eyeOut.textContent = player.eyeHeight.toFixed(2);
+    }, 100);
+  }
+
   if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, bloom, intro: () => intro, keypads: () => keypads, setWorld: (w) => setWorld?.(w), sfx };
 }
 
