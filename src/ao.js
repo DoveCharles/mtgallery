@@ -113,11 +113,13 @@ export class AmbientOcclusion {
     // The normal/depth pass would otherwise redraw the shadow maps.
     const shadows = renderer.shadowMap.autoUpdate;
     renderer.shadowMap.autoUpdate = false;
-    const shown = this.hidden.filter((o) => o.visible);
-    for (const o of shown) o.visible = false;
+    // Left out through their layers rather than `visible`, which would hide their children
+    // too (the lightbulb's cap and filament are children of its glass).
+    const masks = this.hidden.map((o) => o.layers.mask);
+    for (const o of this.hidden) o.layers.disableAll();
     this.pass.camera = camera;
     this.pass.render(renderer, null, null);
-    for (const o of shown) o.visible = true;
+    this.hidden.forEach((o, i) => (o.layers.mask = masks[i]));
     renderer.shadowMap.autoUpdate = shadows;
     for (const t of targets) t.scissorTest = false;
     return true;
