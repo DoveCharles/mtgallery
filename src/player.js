@@ -73,6 +73,9 @@ export class Player {
     base.append(knob);
     document.body.append(base);
 
+    // iOS Safari ignores the viewport's user-scalable=no and can still pinch-zoom the page.
+    for (const type of ['gesturestart', 'gesturechange']) addEventListener(type, (e) => e.preventDefault());
+
     let stickId = null;
     let origin = null;
     const moveStick = (e) => {

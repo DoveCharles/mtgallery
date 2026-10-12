@@ -3,6 +3,9 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+  touch-action: none; /* no pinch or double-tap zoom: two thumbs (joystick + look) read as a pinch */
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   background: #050506;
   color: #eee;
   font-family: Georgia, 'Times New Roman', serif;
