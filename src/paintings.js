@@ -8,6 +8,7 @@ import * as THREE from 'three';
 
 const CROPS = {
   'test-2': { scale: [0.945, 0.76], offset: [0.025, 0.22] },
+  'test-2-2': { scale: [0.98, 1], offset: [0, 0] }, // the scan's white edge, on the right, left out
   'test-3': { scale: [0.97, 0.93], offset: [0, 0] },
   'test-3-1-2': { scale: [0.78, 0.67], offset: [0.13, 0.24] },
   'test-3-2': { scale: [1, 0.72], offset: [0, 0.13] },

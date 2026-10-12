@@ -391,7 +391,10 @@ function addGallerySpots(room) {
     const paintingsY = hung.isEmpty() ? centre.y : hung.getCenter(new THREE.Vector3()).y;
     const facing = Math.sign(middle.z - centre.z); // the frames hang on walls across z
     const z = facing > 0 ? b.min.z + frames.margin : b.max.z - frames.margin; // the wall, behind them
-    const rect = [[b.min.x, b.min.y], [b.max.x, b.min.y], [b.max.x, b.max.y], [b.min.x, b.max.y]].map(([x, y]) => new THREE.Vector3(x, y, z));
+    // The light's square is cut on the frames' faces: cut on the wall, the light (from high up)
+    // missed the bottoms of the frames standing out from it.
+    const front = facing > 0 ? b.max.z - frames.margin : b.min.z + frames.margin;
+    const rect = [[b.min.x, b.min.y], [b.max.x, b.min.y], [b.max.x, b.max.y], [b.min.x, b.max.y]].map(([x, y]) => new THREE.Vector3(x, y, front));
     const light = squareSpot(new THREE.Vector3(centre.x, top, z + facing * frames.out), rect, frames);
     light.userData.intensity = 0;
     lights.push(light);
