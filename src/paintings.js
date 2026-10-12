@@ -9,7 +9,7 @@ import * as THREE from 'three';
 const CROPS = {
   'test-2': { scale: [1.02, 0.76], offset: [-0.01, 0.22] },
   'test-3': { scale: [0.97, 0.93], offset: [0, 0] },
-  'test-3-1-2': { scale: [0.78, 0.67], offset: [0.13, 0.265] },
+  'test-3-1-2': { scale: [0.78, 0.67], offset: [0.13, 0.24] },
   'test-3-2': { scale: [1, 0.72], offset: [0, 0.13] },
 };
 const WHOLE = { scale: [1, 1], offset: [0, 0] };
