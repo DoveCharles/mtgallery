@@ -579,6 +579,7 @@ async function start() {
       },
     });
     crosshair.hidden = true;
+    const title = intro;
     keypads = new KeypadSystem({
       root: level.root,
       camera,
@@ -590,6 +591,14 @@ async function start() {
       onOpen: (door, room) => portals.connect(`door${keypads.doors.indexOf(door)}`, `${roomBehind(door, room)}/Entrance`),
       onEnter: () => (crosshair.hidden = true),
       onLeave: () => (crosshair.hidden = false),
+      // The return keypad: the player waits at the spawn while the camera rises to the title.
+      onReturn: () => {
+        for (const d of keypads.doors) d.close();
+        player.spawnAt(level.spawn);
+        landed = false;
+        intro = title;
+        intro.rise();
+      },
     });
     player.blockers = keypads.blockers;
   } else {
@@ -705,9 +714,12 @@ async function start() {
       sfx.footsteps(dt, player.enabled && player.onGround && speed > 0.1, speed / player.walkSpeed);
     }
     const cutscene = intro?.update(dt);
-    // The floor stays black (part of the logo) until the camera is down in the corridor.
-    if (floor && !(intro && (intro.state === 'title' || intro.state === 'drop'))) {
-      floorReveal = Math.min(floorReveal + dt / FLOOR_FADE, 1);
+    // The floor stays black (part of the logo) until the camera is down in the corridor,
+    // and goes black again on the way back up.
+    if (floor) {
+      const s = intro?.state;
+      if (s === 'return' || s === 'rise') floorReveal = Math.max(floorReveal - dt / FLOOR_FADE, 0);
+      else if (s !== 'title' && s !== 'drop') floorReveal = Math.min(floorReveal + dt / FLOOR_FADE, 1);
       floor.setReveal(floorReveal);
     }
     // A door's portal only needs drawing once the door has started to open.

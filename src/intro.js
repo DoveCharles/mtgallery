@@ -7,11 +7,14 @@ import * as THREE from 'three';
 // lens so the logo keeps its size on screen (a dolly zoom), which turns the flat,
 // near-orthographic view into ordinary perspective.
 // Tilt: the camera pitches up to look down the corridor, then the player takes over.
+// Return (the return keypad, see rise()): the camera flies back to the spawn looking
+// straight down, the drop plays in reverse, and the title is back with its button.
 
 const START_HEIGHT = 1500; // above the corridor floor
 const FRAME_MARGIN = 2.2; // how much bigger than the M/T the title view is
 const DROP_TIME = 3.2;
 const TILT_TIME = 1.4;
+const RETURN_TIME = 1.6;
 const THROB_SPEED = 1.5; // matches UIButtonThrob in the Unity project
 
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -26,6 +29,7 @@ export class Intro {
     this.dom = dom;
     this.player = player;
     this.button = button;
+    this.buttonParent = button.parent;
     this.onPress = onPress;
     this.onLanded = onLanded;
     this.onDone = onDone;
@@ -121,8 +125,39 @@ export class Intro {
         this.player.enabled = true;
         this.onDone?.();
       }
+    } else if (this.state === 'return') {
+      const s = smooth(Math.min(this.time / RETURN_TIME, 1));
+      this.camera.position.lerpVectors(this.from.pos, this.end, s);
+      this.camera.quaternion.slerpQuaternions(this.from.quat, this.from.down, s);
+      this.camera.updateMatrixWorld();
+      if (s === 1) {
+        this.state = 'rise';
+        this.time = 0;
+      }
+    } else if (this.state === 'rise') {
+      const t = Math.min(this.time / DROP_TIME, 1);
+      this.pose(1 - smoother(t));
+      if (t === 1) {
+        this.state = 'title';
+        this.time = 0;
+        this.buttonParent.add(this.button);
+      }
     }
     return this.state !== 'done';
+  }
+
+  // Back to the title, from wherever the camera is. The player must already be back at
+  // the spawn (and disabled).
+  rise() {
+    this.state = 'return';
+    this.time = 0;
+    this.hover = false;
+    this.end = this.player.getEye(new THREE.Vector3());
+    this.from = {
+      pos: this.camera.position.clone(),
+      quat: this.camera.quaternion.clone(),
+      down: new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, this.player.yaw, 0, 'YXZ')),
+    };
   }
 
   // DEBUG (remove before the final version): jump to the end, as if the drop had played.
@@ -148,6 +183,7 @@ export class Intro {
   get aoStrength() {
     if (this.state === 'title') return 0;
     if (this.state === 'drop') return smooth(THREE.MathUtils.clamp((this.time / DROP_TIME - 0.6) / 0.4, 0, 1));
+    if (this.state === 'rise') return smooth(THREE.MathUtils.clamp((1 - this.time / DROP_TIME - 0.6) / 0.4, 0, 1));
     return 1;
   }
 

@@ -16,6 +16,10 @@ import * as THREE from 'three';
 // keypad for a wrong code, and the door opening and closing from the door itself.
 //
 // The blend has one keypad (object "Keypad", on "DoorLeft"); the right door gets a copy.
+//
+// "ReturnKeypad", in the alcove at the bottom of the T, has no door: just a return
+// button (RButt, REmis) and an X (RetXButt, RetXEmis). Return hands the camera to
+// onReturn, which takes the player back to the title.
 
 const APPROACH_DISTANCE = 1.4; // from the keypad, along the floor
 const REARM_DISTANCE = 2.2; // walk this far away before it can catch you again
@@ -44,7 +48,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 // "5Butt", "<Emis", ... possibly on a parent if the mesh was split by the exporter.
 function keyOf(obj) {
   for (let o = obj; o; o = o.parent) {
-    const m = /^([0-9X<])(Butt|Emis)$/.exec(o.name);
+    const m = /^(?:Ret)?([0-9X<R])(Butt|Emis)$/.exec(o.name);
     if (m) return { key: m[1], part: m[2] };
   }
   return null;
@@ -326,10 +330,11 @@ export class KeypadSystem {
   time = 0;
 
   // codes: { '5555': room, ... } (room is passed on as is); onOpen(door, room) when one is entered.
-  constructor({ root, camera, dom, player, envMap, codes, sfx, onOpen, onEnter, onLeave }) {
+  constructor({ root, camera, dom, player, envMap, codes, sfx, onOpen, onEnter, onLeave, onReturn }) {
     this.codes = codes;
     this.sfx = sfx;
     this.onOpen = onOpen;
+    this.onReturn = onReturn;
     this.onEnter = onEnter;
     this.onLeave = onLeave;
     this.camera = camera;
@@ -390,6 +395,19 @@ export class KeypadSystem {
       pad.armed = true;
     });
 
+    // The return keypad has no door, only the direction it faces (towards its buttons).
+    const ret = root.getObjectByName('ReturnKeypad');
+    if (ret) {
+      const box = new THREE.Box3().setFromObject(ret);
+      const size = box.getSize(new THREE.Vector3());
+      _v.subVectors(new THREE.Box3().setFromObject(ret.getObjectByName('RButt')).getCenter(new THREE.Vector3()), box.getCenter(new THREE.Vector3()));
+      const normal = size.x < size.z ? new THREE.Vector3(Math.sign(_v.x), 0, 0) : new THREE.Vector3(0, 0, Math.sign(_v.z));
+      const pad = new Keypad(ret, { normal, state: 'closed' }, mats);
+      pad.frame();
+      pad.armed = true;
+      this.keypads.push(pad);
+    }
+
     dom.addEventListener('pointermove', (e) => {
       if (this.state !== 'active' || e.pointerType === 'touch') return;
       this.hoverKey = this.pick(e);
@@ -407,6 +425,11 @@ export class KeypadSystem {
       if (!key) return;
       this.sfx?.click(this.active.keys.get(key)?.butt ?? this.active.root);
       if (key === 'X') return this.leave();
+      if (key === 'R') {
+        this.active.press(key, this.codes); // just the push
+        this.release();
+        return this.onReturn?.();
+      }
       const result = this.active.press(key, this.codes);
       if (result === 'wrong') this.sfx?.incorrect(this.active.root);
       else if (result) {
@@ -473,6 +496,15 @@ export class KeypadSystem {
       pos: this.player.getEye(new THREE.Vector3()),
       quat: new THREE.Quaternion().setFromEuler(new THREE.Euler(this.player.pitch, this.player.yaw, 0, 'YXZ')),
     };
+  }
+
+  // Lets go of the camera where it is, for whoever takes it next (the return button).
+  release() {
+    this.active.setHover(null);
+    this.dom.style.cursor = '';
+    this.hoverKey = null;
+    this.state = 'idle';
+    this.active = null;
   }
 
   // An open door shuts by itself once the player is more than halfway to the other door.

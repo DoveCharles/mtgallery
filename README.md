@@ -54,6 +54,8 @@ The intro finds things by name: objects `M` and `Button`, materials `CeilingWhit
 The doors are `DoorLeft` and `DoorRight`, and the single `Keypad` (children `0Butt`–`9Butt`,
 `XButt`, `<Butt`, matching `*Emis` glow slots, `Light1`–`Light4`) is copied onto the
 other door in code. Code `5555` opens a door, X walks away, < clears.
+`ReturnKeypad`, in the alcove at the bottom of the T, has just `RButt`/`REmis` (back to the
+title) and `RetXButt`/`RetXEmis`.
 The prototype portal level is still at `/?level=test`.
 
 When exporting by hand, set **Lighting Mode → Non-Physical** so lights match Blender.
