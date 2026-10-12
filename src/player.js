@@ -228,8 +228,9 @@ export class Player {
   // A narrow opening (a slit portal) in a face, centred on `frame` (+z out of the face, y up):
   // walking at it from within `reach` in front and `face` to either side, the eye's offset
   // from the opening (sideways, and in height) shrinks in step with the distance left, so
-  // it's gone on arrival: an invisible funnel. Coming in too flat to line up in time, the
-  // face holds the eye `stand` off it and the push slides it along to the opening.
+  // it's gone on arrival: an invisible funnel. The face is a wall `stand` off the opening,
+  // but for the opening itself, and once past that line the eye is held within the opening
+  // (a channel) until it's through or back out.
   addFunnel(frame, width, height, { face, reach = 1.5, stand = 0.15 }) {
     frame.updateMatrixWorld();
     this.funnels.push({
@@ -246,21 +247,32 @@ export class Player {
   funnel(f, prevEye) {
     const a = _a.copy(prevEye).applyMatrix4(f.toLocal);
     const b = this.getEye(_b).applyMatrix4(f.toLocal);
+    if (Math.abs(a.x) > f.face || Math.abs(a.y) > 2 || a.z < 0) return;
+    const outside = a.z >= f.stand - 1e-3;
     const left = a.z - f.stand;
     const progress = a.z - b.z;
-    if (left <= 0 || left > f.reach || progress <= 0 || Math.abs(a.x) > f.face || Math.abs(a.y) > 2) return;
-    // Shift each offset beyond the opening by its share of the distance covered, but at
-    // most twice that (a funnel's slope), so nothing jumps.
-    const ease = (offset, half) => {
-      const over = Math.abs(offset) - half;
-      if (over <= 0) return 0;
-      return -Math.sign(offset) * Math.min(over * Math.min(1, progress / left), progress * 2);
-    };
-    b.x += ease(b.x, f.halfWidth);
-    const lift = ease(b.y, f.halfHeight);
+    let lift = 0;
+    if (outside && left > 0 && left <= f.reach && progress > 0) {
+      // Shift each offset beyond the opening by its share of the distance covered, but at
+      // most twice that (a funnel's slope), so nothing jumps.
+      const ease = (offset, half) => {
+        const over = Math.abs(offset) - half;
+        if (over <= 0) return 0;
+        return -Math.sign(offset) * Math.min(over * Math.min(1, progress / left), progress * 2);
+      };
+      b.x += ease(b.x, f.halfWidth);
+      lift = ease(b.y, f.halfHeight);
+    }
+    if (b.z < f.stand) {
+      const lined = Math.abs(b.x) <= f.halfWidth + 0.01 && Math.abs(b.y + lift) <= f.halfHeight + 0.01;
+      if (outside && !lined) b.z = f.stand; // the face
+      else if (!outside) {
+        // In the channel: kept within the opening.
+        b.x = THREE.MathUtils.clamp(b.x, -f.halfWidth, f.halfWidth);
+        lift = THREE.MathUtils.clamp(b.y + lift, -f.halfHeight, f.halfHeight) - b.y;
+      }
+    }
     this.eyeHeight += lift;
-    b.y += lift;
-    if (b.z < f.stand && (Math.abs(b.x) > f.halfWidth + 0.01 || Math.abs(b.y) > f.halfHeight + 0.01)) b.z = f.stand;
     b.applyMatrix4(f.toWorld);
     this.position.x = b.x;
     this.position.z = b.z;

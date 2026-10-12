@@ -143,6 +143,10 @@ const WALL_MATERIAL = 'Material'; // the open bedroom corridor's white
 const BARE_COLOUR = 0xe7e7e7; // the bedrooms' walls'
 // Half the width of the Dierama's face around a slit (each slit is in the middle of one).
 const SLIT_FACE = 1.6;
+// How far the slits' portals sit into the doors (tools/build_room5555.py's SLIT_DEPTH, at the
+// room's 1.25 scale): the funnel's face stands this plus the player's radius off a portal, so
+// the player's body never reaches the solid box around the doors.
+const SLIT_DEPTH = 0.0875;
 // Room i sits at (1000 * (i + 1), ROOM_HEIGHT, 0): raised clear of the intro's white
 // ground plane (y 0) so its floor doesn't fight with it and light can get in from outside.
 const ROOM_SPACING = 1000;
@@ -671,7 +675,7 @@ async function start() {
     const slit = portals.byId.get(a);
     const exit = portals.byId.get(b);
     if (!slit?.linked || !exit) continue;
-    player.addFunnel(slit.frame, slit.width, slit.height, { face: SLIT_FACE });
+    player.addFunnel(slit.frame, slit.width, slit.height, { face: SLIT_FACE, stand: SLIT_DEPTH + player.radius + 0.01 });
     if (b in SLIT_MASKED) player.addFunnel(exit.frame, slit.width, slit.height, { face: exit.width / 2 });
   }
   for (const [id, kind] of Object.entries(SLIT_MASKED)) {
