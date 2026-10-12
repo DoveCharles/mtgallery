@@ -129,7 +129,7 @@ const DARK_SKY = 0.005;
 // little with the TV's static.
 const HANGERS = { name: 'CoatHangerClosed', glow: 0.1, static: 0.5 };
 // And its carpet glows very faintly (its own pattern), so it shows in the dark.
-const CARPET_GLOW = { CarpetClosed: 0.1 };
+const CARPET_GLOW = { CarpetClosed: 0.16 };
 // Meshes that show space instead of themselves (src/stars.js): the closed bedroom's Star corridor.
 const SPACE = ['Star'];
 // The window at the Star corridor's end, the only thing in it besides space (see windowMask).
