@@ -403,13 +403,14 @@ function addGallerySpots(room) {
     const z = facing > 0 ? b.min.z + frames.margin : b.max.z - frames.margin; // the wall, behind them
     // The light comes from high up, so its square on the wall reaches down far enough to light
     // the frames' bottom edges, standing out from it (no further: the frames cast no shadow),
-    // and as far up again, so it stays centred on them.
+    // and as far up again and out to the sides, so the margin round them is even.
     const from = new THREE.Vector3(centre.x, top, z + facing * frames.out);
     const front = facing > 0 ? b.max.z - frames.margin : b.min.z + frames.margin;
     const edge = b.min.y + frames.margin;
     const bottom = Math.min(b.min.y, from.y + ((z - from.z) / (front - from.z)) * (edge - from.y) - 0.05);
-    const ceil = b.max.y + (b.min.y - bottom);
-    const rect = [[b.min.x, bottom], [b.max.x, bottom], [b.max.x, ceil], [b.min.x, ceil]].map(([x, y]) => new THREE.Vector3(x, y, z));
+    const extra = b.min.y - bottom;
+    const [left, right, ceil] = [b.min.x - extra, b.max.x + extra, b.max.y + extra];
+    const rect = [[left, bottom], [right, bottom], [right, ceil], [left, ceil]].map(([x, y]) => new THREE.Vector3(x, y, z));
     const light = squareSpot(from, rect, frames);
     light.userData.intensity = 0;
     lights.push(light);
