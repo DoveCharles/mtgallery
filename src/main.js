@@ -48,12 +48,14 @@ const SHADE = { 'room5555-left': { under: 'Ceiling', light: 0.06 }, 'room5555-ri
 // which comes up from off `far` m from the row (short of the middle of the room, so both are
 // off there) to full at `near` m. The frames' covers (their WaxCover material, see
 // tools/build_room5555.py) fade right away, over `fade` s, once you're within `reveal` m of
-// the row, and come back once you're `hide` m off again.
+// the row, and come back once you're `hide` m off again. Walking up to a row, the eye eases
+// to the height of its paintings' middles, from none at `far` m off to fully at `near` m.
 const GALLERY = {
   world: 'room5555-right',
   plinth: { objects: ['Plinth', 'Cube'], square: 1.8, intensity: 40 },
   frames: { objects: ['WaxFrame', 'WaxFrame001'], margin: 0.3, out: 2.5, intensity: 70, near: 2.5, far: 11, ease: 1.5 },
   covers: { material: 'WaxCover', reveal: 4.5, hide: 5, fade: 2.5 },
+  eye: { near: 2.5, far: 5 },
 };
 // Walls that are pure black (see addVoid in shade.js): in each world, the wall the named screen
 // hangs on, all along under the ceiling (its doorways stay as they are).
@@ -355,12 +357,12 @@ function blackWall(screen, ceiling) {
 }
 
 // Room 5555 (right)'s spotlights (see GALLERY), and an update for the frames' to brighten as
-// the player comes up to them.
+// the player comes up to them (and the eye to line up with the paintings).
 function addGallerySpots(room) {
   const ceiling = new THREE.Box3().setFromObject(room.getObjectByName('Ceiling'));
   const top = ceiling.min.y - 0.05;
   const middle = ceiling.getCenter(new THREE.Vector3());
-  const { plinth, frames, covers } = GALLERY;
+  const { plinth, frames, covers, eye: align } = GALLERY;
 
   const stand = new THREE.Box3();
   for (const name of plinth.objects) stand.expandByObject(room.getObjectByName(name));
@@ -384,18 +386,26 @@ function addGallerySpots(room) {
       coverMeshes.push(o);
     });
     const centre = b.getCenter(new THREE.Vector3());
+    const hung = new THREE.Box3();
+    frame.traverse((o) => o.isMesh && o.material.name === 'WaxPainting' && hung.expandByObject(o));
+    const paintingsY = hung.isEmpty() ? centre.y : hung.getCenter(new THREE.Vector3()).y;
     const facing = Math.sign(middle.z - centre.z); // the frames hang on walls across z
     const z = facing > 0 ? b.min.z + frames.margin : b.max.z - frames.margin; // the wall, behind them
     const rect = [[b.min.x, b.min.y], [b.max.x, b.min.y], [b.max.x, b.max.y], [b.min.x, b.max.y]].map(([x, y]) => new THREE.Vector3(x, y, z));
     const light = squareSpot(new THREE.Vector3(centre.x, top, z + facing * frames.out), rect, frames);
     light.userData.intensity = 0;
     lights.push(light);
-    return { light, x: centre.x, halfWidth: (b.max.x - b.min.x) / 2, z, level: 0, cover, coverMeshes, shown: true };
+    return { light, x: centre.x, halfWidth: (b.max.x - b.min.x) / 2, z, paintingsY, level: 0, cover, coverMeshes, shown: true };
   });
 
-  const update = (dt, eye) => {
+  // `player`'s eyePull is set to the nearest row's paintings.
+  const update = (dt, player) => {
+    const eye = player.position;
+    let pull = null;
     for (const row of rows) {
       const d = Math.hypot(Math.max(0, Math.abs(eye.x - row.x) - row.halfWidth), eye.z - row.z);
+      const amount = 1 - THREE.MathUtils.smoothstep(d, align.near, align.far);
+      if (amount > (pull?.amount ?? 0)) pull = { height: row.paintingsY - eye.y, amount };
       const goal = 1 - THREE.MathUtils.smoothstep(d, frames.near, frames.far);
       row.level += (goal - row.level) * Math.min(1, dt * frames.ease);
       row.light.userData.intensity = frames.intensity * row.level;
@@ -407,6 +417,7 @@ function addGallerySpots(room) {
       m.depthWrite = m.opacity === 1;
       for (const o of row.coverMeshes) o.visible = m.opacity > 0;
     }
+    player.eyePull = pull;
   };
   return { lights, update };
 }
@@ -698,7 +709,7 @@ async function start() {
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.1);
     setStaticTime(clock.elapsedTime);
-    gallery?.update(dt, player.position);
+    gallery?.update(dt, player);
     // The glow flickers with the static's frames (30 a second).
     const tvFrame = Math.floor(clock.elapsedTime * 30);
     for (const l of tvLights) {

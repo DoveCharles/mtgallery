@@ -22,6 +22,7 @@ export class Player {
   height = 1.95;
   eyeHeight = 1.8;
   eyeTarget = 1.8; // scroll sets this; eyeHeight eases toward it
+  eyePull = null; // {height, amount 0..1}: draws the eye from eyeTarget toward height (the wax paintings)
   minEye = 0.5;
   maxEye = 3;
   walkSpeed = 3.3;
@@ -164,7 +165,9 @@ export class Player {
     if (_move.lengthSq() > 1) _move.normalize();
     _move.multiplyScalar(speed);
 
-    this.eyeHeight += (this.eyeTarget - this.eyeHeight) * (1 - Math.exp(-12 * dt));
+    const pull = this.eyePull;
+    const target = pull ? THREE.MathUtils.lerp(this.eyeTarget, THREE.MathUtils.clamp(pull.height, this.minEye, this.maxEye), pull.amount) : this.eyeTarget;
+    this.eyeHeight += (target - this.eyeHeight) * (1 - Math.exp(-12 * dt));
 
     this.getEye(_prevEye);
     const step = dt / PHYSICS_STEPS;
