@@ -24,7 +24,7 @@ const FILAMENT_COLOR = new THREE.Color(1, 0.5913, 0.1569);
 const FILAMENT_GLOW = 220; // emissive strength at full (as exported from Blender)
 const GLASS_GLOW = 0.4; // emissive intensity at full
 // The glass: nearly clear face-on, turning reflective towards its silhouette (Fresnel).
-const GLASS = { opacity: 0.08, edge: 0.85, roughness: 0.03, envMapIntensity: 1.6 };
+const GLASS = { opacity: 0.08, edge: 0.85, roughness: 0.03, envMapIntensity: 1 };
 // The light's colour, as HSL: amber orange, its hue drifting by up to SHIMMER either way
 // (deeper orange to gold) over a few seconds.
 const LIGHT_HSL = { h: 0.095, s: 0.95, l: 0.6 };
@@ -74,7 +74,7 @@ function glassMaterial(old, envMap) {
         float glassFresnel = 0.04 + 0.96 * pow(glassEdge, 5.0);
         vec3 glassEnv = textureCubeUV(envMap, envMapRotation * vReflect, ${GLASS.roughness.toFixed(2)}).rgb;
         vec3 glassAmbient = textureCubeUV(envMap, envMapRotation * normalize(vGlassNormal), 1.0).rgb;
-        outgoingLight = emissive + (glassAmbient + glassEnv * glassFresnel * 2.0) * ${GLASS.envMapIntensity.toFixed(2)};
+        outgoingLight = emissive + (glassAmbient * 0.1 + glassEnv * glassFresnel * 2.0) * ${GLASS.envMapIntensity.toFixed(2)};
         diffuseColor.a = mix(diffuseColor.a, 1.0, pow(glassEdge, 3.0) * ${GLASS.edge.toFixed(2)});`,
       );
   };
