@@ -24,6 +24,7 @@ const FILAMENT_COLOR = new THREE.Color(1, 0.5913, 0.1569);
 const FILAMENT_GLOW = 220; // emissive strength at full (as exported from Blender)
 const GLASS_GLOW = 0.4; // emissive intensity at full
 // The glass: nearly clear face-on, turning reflective towards its silhouette (Fresnel).
+const CAP_ENV = 0.6; // how strongly the metal cap reflects the room
 const GLASS = { opacity: 0.08, edge: 0.85, roughness: 0.03, envMapIntensity: 1 };
 // The light's colour, as HSL: amber orange, its hue drifting by up to SHIMMER either way
 // (deeper orange to gold) over a few seconds.
@@ -103,8 +104,13 @@ export async function addFlickeringBulb(level, listener, world, envMap) {
     glass.material = glassMaterial(glass.material, envMap); // its glow's colour is set as it shimmers
     glass.renderOrder = 1; // after what's inside it
   }
-  // The bulb's own parts would block its light.
-  bulb.traverse((o) => o.isMesh && (o.castShadow = false));
+  // The bulb's own parts would block its light. Its metal cap reflects the room's softboxes,
+  // not the sky (scene.environment), which turned it blue.
+  bulb.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = false;
+    if (o !== glass && o.material.metalness > 0) o.material = Object.assign(o.material.clone(), { envMap, envMapIntensity: CAP_ENV });
+  });
 
   level.root.updateMatrixWorld(true);
   const center = new THREE.Box3().setFromObject(filament).getCenter(new THREE.Vector3());
