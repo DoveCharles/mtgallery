@@ -141,6 +141,9 @@ const NO_GROUND = new Set(['bedroom-open']);
 const SLIT_MASKED = { 'bedroom-closed/Exit': 'space', 'bedroom-open/Exit': 'wall' };
 const WALL_MATERIAL = 'Material'; // the open bedroom corridor's white
 const BARE_COLOUR = 0xe7e7e7; // the bedrooms' walls'
+// The bedrooms' silver trim (Blender's Highlight): metal, so it reflects the studio softboxes
+// (roomEnv) rather than the rooms' dim sky, which would leave it black.
+const SILVER = { material: 'Highlight', colour: 0xd8d8d8, env: 1 };
 // Half the width of the Dierama's face around a slit (each slit is in the middle of one).
 const SLIT_FACE = 1.6;
 // How far the slits' portals sit into the doors (tools/build_room5555.py's SLIT_DEPTH, at the
@@ -561,6 +564,12 @@ async function start() {
   let setWorld;
   // A studio's softboxes, for the keypads' steel and the lightbulb's glass to reflect.
   const roomEnv = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+  for (const room of rooms) room.root.traverse((o) => {
+    if (o.isMesh && o.material.name === SILVER.material) {
+      Object.assign(o.material, { metalness: 1, envMap: roomEnv, envMapIntensity: SILVER.env });
+      o.material.color.set(SILVER.colour);
+    }
+  });
   if (isStart) {
     let button, logo, ground;
     const sky = addSky();
