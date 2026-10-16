@@ -44,30 +44,39 @@ const CLINK_RANGE = 17;
 let sounds;
 
 // A thin clear glass, its edges more opaque (so its reflections show there) than its middle.
+// Unlit: only the room's reflection (Fresnel weighted, as a clearcoated glass's would be)
+// and its own glow. The glass has many layers, so a lit material (every light in the scene,
+// per layer, per pixel) slowed the frame down several times over when it filled the screen.
 function glassMaterial(old, envMap) {
-  const m = new THREE.MeshPhysicalMaterial({
-    color: 0xffffff,
+  const m = new THREE.MeshBasicMaterial({
     transparent: true,
     opacity: GLASS.opacity,
-    roughness: GLASS.roughness,
-    metalness: 0,
-    ior: 1.5,
-    specularIntensity: 1,
-    clearcoat: 1,
-    clearcoatRoughness: 0.02,
     envMap,
-    envMapIntensity: GLASS.envMapIntensity,
     side: THREE.DoubleSide,
     depthWrite: false,
-    emissive: old.emissive?.clone() ?? new THREE.Color(),
   });
+  // Set by the flicker, like a lit material's (three fills the uniform, given these).
+  m.emissive = old.emissive?.clone() ?? new THREE.Color();
+  m.emissiveIntensity = 1;
   m.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <opaque_fragment>',
-      `float glassFresnel = pow(1.0 - saturate(abs(dot(normalize(vViewPosition), normal))), 3.0);
-      diffuseColor.a = mix(diffuseColor.a, 1.0, glassFresnel * ${GLASS.edge.toFixed(2)});
-      #include <opaque_fragment>`,
-    );
+    shader.uniforms.emissive = { value: new THREE.Color() };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vGlassFacing;\nvarying vec3 vGlassNormal;')
+      .replace('#include <envmap_vertex>', '#include <envmap_vertex>\nvGlassFacing = abs(dot(cameraToVertex, worldNormal));\nvGlassNormal = worldNormal;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        '#include <common>\n#include <cube_uv_reflection_fragment>\nvarying float vGlassFacing;\nvarying vec3 vGlassNormal;\nuniform vec3 emissive;',
+      )
+      .replace(
+        '#include <envmap_fragment>',
+        `float glassEdge = 1.0 - saturate(vGlassFacing);
+        float glassFresnel = 0.04 + 0.96 * pow(glassEdge, 5.0);
+        vec3 glassEnv = textureCubeUV(envMap, envMapRotation * vReflect, ${GLASS.roughness.toFixed(2)}).rgb;
+        vec3 glassAmbient = textureCubeUV(envMap, envMapRotation * normalize(vGlassNormal), 1.0).rgb;
+        outgoingLight = emissive + (glassAmbient + glassEnv * glassFresnel * 2.0) * ${GLASS.envMapIntensity.toFixed(2)};
+        diffuseColor.a = mix(diffuseColor.a, 1.0, pow(glassEdge, 3.0) * ${GLASS.edge.toFixed(2)});`,
+      );
   };
   return m;
 }
@@ -121,6 +130,12 @@ export async function addFlickeringBulb(level, listener, world, envMap) {
   buzz?.setLoop(true).setVolume(0);
   const clink = positional(null, CLINK_RANGE);
   group.updateMatrixWorld(true);
+  // three only moves a positional sound's panner while it's playing, and the clinks play
+  // through this one's without it ever playing, so it would stay at the origin, out of earshot.
+  const at = clink.getWorldPosition(new THREE.Vector3());
+  clink.panner.positionX.value = at.x;
+  clink.panner.positionY.value = at.y;
+  clink.panner.positionZ.value = at.z;
 
   const rand = ([lo, hi]) => THREE.MathUtils.randFloat(lo, hi);
   // The flicker to come, as [brightness, seconds] steps.
