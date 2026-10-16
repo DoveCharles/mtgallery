@@ -9,6 +9,8 @@ import * as THREE from 'three';
 // materials are shared between them).
 // A void (see addVoid) is a wall that shows no light at all: inside its box, surfaces
 // facing out of the wall are pure black.
+// A light box (see setLightBox) keeps the point lights inside it (the lightbulb's) off every
+// surface outside it: they cast no shadows, so they'd light the rooms through the walls.
 
 const FEATHER = 0.25; // m
 const MAX_ZONES = 4;
@@ -21,7 +23,23 @@ const uniforms = {
   voidMin: { value: Array.from({ length: MAX_VOIDS }, () => new THREE.Vector3(1e9, 1e9, 1e9)) },
   voidMax: { value: Array.from({ length: MAX_VOIDS }, () => new THREE.Vector3(-1e9, -1e9, -1e9)) },
   voidFacing: { value: Array.from({ length: MAX_VOIDS }, () => new THREE.Vector3()) },
+  // Everywhere, until it's set: no light is cut off.
+  lightBoxMin: { value: new THREE.Vector3(-1e9, -1e9, -1e9) },
+  lightBoxMax: { value: new THREE.Vector3(1e9, 1e9, 1e9) },
 };
+
+// The point light's loop, with each light cut off outside the box if it's inside it. The
+// light's position is in view space: back to world space (the view matrix is a rotation and
+// a translation).
+const POINT_LIGHT = 'getPointLightInfo( pointLight, geometryPosition, directLight );';
+const lightsBegin = THREE.ShaderChunk.lights_fragment_begin.includes(POINT_LIGHT)
+  ? THREE.ShaderChunk.lights_fragment_begin.replace(
+      POINT_LIGHT,
+      `${POINT_LIGHT}
+		directLight.color *= lightBoxed( transpose( mat3( viewMatrix ) ) * ( pointLight.position - viewMatrix[ 3 ].xyz ), vShadePos );`,
+    )
+  : null;
+if (!lightsBegin) console.warn('shade: three.js point light loop changed; light box off');
 let zoneCount = 0;
 let voidCount = 0;
 const patched = new WeakSet();
@@ -49,6 +67,12 @@ export function addVoid(box, facing) {
   uniforms.voidMax.value[voidCount].copy(box.max);
   uniforms.voidFacing.value[voidCount].copy(facing).normalize();
   voidCount++;
+}
+
+// Point lights inside `box` (world space) reach only the surfaces inside it.
+export function setLightBox(box) {
+  uniforms.lightBoxMin.value.copy(box.min);
+  uniforms.lightBoxMax.value.copy(box.max);
 }
 
 function patchMaterials(root) {
@@ -80,6 +104,14 @@ uniform float shadeK[${MAX_ZONES}];
 uniform vec3 voidMin[${MAX_VOIDS}];
 uniform vec3 voidMax[${MAX_VOIDS}];
 uniform vec3 voidFacing[${MAX_VOIDS}];
+uniform vec3 lightBoxMin;
+uniform vec3 lightBoxMax;
+bool inLightBox(vec3 p) {
+  return all(greaterThanEqual(p, lightBoxMin)) && all(lessThanEqual(p, lightBoxMax));
+}
+float lightBoxed(vec3 light, vec3 p) {
+  return inLightBox(light) && !inLightBox(p) ? 0.0 : 1.0;
+}
 bool inVoid(vec3 p, vec3 n) {
   for (int i = 0; i < ${MAX_VOIDS}; i++) {
     if (all(greaterThanEqual(p, voidMin[i])) && all(lessThanEqual(p, voidMax[i])) && dot(n, voidFacing[i]) > 0.5) return true;
@@ -96,6 +128,7 @@ float shadeAt(vec3 p) {
   return shade;
 }`,
           )
+          .replace('#include <lights_fragment_begin>', lightsBegin ?? '#include <lights_fragment_begin>')
           .replace(
             '#include <lights_fragment_maps>',
             `#include <lights_fragment_maps>

@@ -11,7 +11,7 @@ import { Bloom } from './bloom.js';
 import { softShadows } from './shadows.js';
 import { addCards } from './cards.js';
 import { addSentenceScreens } from './screens.js';
-import { applyShadeZones, addVoid } from './shade.js';
+import { applyShadeZones, addVoid, setLightBox } from './shade.js';
 import { addFlickeringBulb } from './bulb.js';
 import { addVideoScreen } from './video.js';
 import { woodMaterial, oakMaterial } from './wood.js';
@@ -70,6 +70,9 @@ const GALLERY = {
 // Walls that are pure black (see addVoid in shade.js): in each world, the wall the named screen
 // hangs on, all along under the ceiling (its doorways stay as they are).
 const BLACK_WALLS = { 'room5555-right': { screen: 'Vid', under: 'Ceiling' } };
+// A box round the lightbulb's room (a wireframe in the .blend): its light stops at the box,
+// so it doesn't shine through the walls (see setLightBox).
+const LIGHT_BOX = 'BulbRoom';
 
 // Keypad codes and the rooms they open (public/levels/<room>.glb, entered through its
 // "Entrance" portal): one room for the code, or one per door (by the door's mesh name).
@@ -606,6 +609,12 @@ async function start() {
       const black = BLACK_WALLS[roomNames[i]];
       const screen = black && room.root.getObjectByName(black.screen);
       if (screen) blackWall(screen, room.root.getObjectByName(black.under));
+      const lightBox = room.root.getObjectByName(LIGHT_BOX);
+      if (lightBox) {
+        room.root.updateMatrixWorld(true);
+        setLightBox(new THREE.Box3().setFromObject(lightBox));
+        lightBox.removeFromParent();
+      }
     });
 
     player.enabled = false;
