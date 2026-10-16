@@ -74,7 +74,7 @@ function glassMaterial(old, envMap) {
         float glassFresnel = 0.04 + 0.96 * pow(glassEdge, 5.0);
         vec3 glassEnv = textureCubeUV(envMap, envMapRotation * vReflect, ${GLASS.roughness.toFixed(2)}).rgb;
         vec3 glassAmbient = textureCubeUV(envMap, envMapRotation * normalize(vGlassNormal), 1.0).rgb;
-        outgoingLight = emissive + (glassAmbient * 0.2 + glassEnv * glassFresnel * 2.0) * ${GLASS.envMapIntensity.toFixed(2)};
+        outgoingLight = emissive + (glassAmbient * 0.2 + glassEnv * glassFresnel * 1.7) * ${GLASS.envMapIntensity.toFixed(2)};
         diffuseColor.a = mix(diffuseColor.a, 1.0, pow(glassEdge, 3.0) * ${GLASS.edge.toFixed(2)});`,
       );
   };
