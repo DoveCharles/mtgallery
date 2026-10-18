@@ -14,6 +14,8 @@ const _rot = new THREE.Matrix3();
 const _prevEye = new THREE.Vector3();
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
+const _ray = new THREE.Ray(undefined, new THREE.Vector3(0, 1, 0));
+const CEILING_GAP = 0.3; // how close the eye may come to a ceiling when raised above 3 m
 const JOY_RADIUS = 50; // px the knob can travel from the base's centre
 
 // First-person walker: pointer-lock mouse look (or the arrow keys), WASD, capsule-vs-level collision.
@@ -150,6 +152,17 @@ export class Player {
     return target.copy(this.position).setY(this.position.y + this.eyeHeight);
   }
 
+  // Above 3 m (only reachable where maxEye allows it) the eye stays under the ceiling,
+  // so it can't rise through a lower corridor or doorway. Scrolling up is capped there too.
+  ceilingEye(target) {
+    if (target <= 3) return target;
+    _ray.origin.copy(this.position).setY(this.position.y + this.height);
+    const hit = this.collider.raycastFirst(_ray, THREE.DoubleSide);
+    const top = hit ? Math.max(3, hit.point.y - this.position.y - CEILING_GAP) : Infinity;
+    this.eyeTarget = Math.min(this.eyeTarget, top);
+    return top;
+  }
+
   update(dt) {
     const k = this.enabled ? this.keys : NO_KEYS;
     if (this.joystick) this.joystick.hidden = !this.enabled;
@@ -170,7 +183,7 @@ export class Player {
 
     const pull = this.eyePull;
     const target = pull ? THREE.MathUtils.lerp(this.eyeTarget, THREE.MathUtils.clamp(pull.height, this.minEye, this.maxEye), pull.amount) : this.eyeTarget;
-    this.eyeHeight += (target - this.eyeHeight) * (1 - Math.exp(-12 * dt));
+    this.eyeHeight += (Math.min(target, this.ceilingEye(target)) - this.eyeHeight) * (1 - Math.exp(-12 * dt));
 
     this.getEye(_prevEye);
     const step = dt / PHYSICS_STEPS;

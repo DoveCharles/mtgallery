@@ -82,6 +82,7 @@ const LIGHT_BOX = 'BulbRoom';
 const ZOOM_WORLD = 'room5555-left';
 const ZOOM_PITCH = [0.35, 1.2]; // upward pitch (rad) where the zoom starts, and where it's full
 const ZOOM_MAX = 2.5; // magnification at full zoom
+const MAX_EYE = { 'room5555-left': 5 }; // rooms where scrolling up goes past the usual 3 m
 const ZOOM_RATE = 6; // how fast the zoom eases toward its target (1/s)
 
 const ROOMS = { 5555: { DoorLeft: 'room5555-left', DoorRight: 'room5555-right' } };
@@ -763,6 +764,8 @@ async function start() {
       l.userData.frame = tvFrame;
       l.userData.intensity = TV_LIGHT.intensity * (1 - TV_LIGHT.flicker * Math.random());
     }
+    player.maxEye = MAX_EYE[portals.world] ?? 3;
+    player.eyeTarget = Math.min(player.eyeTarget, player.maxEye);
     player.getEye(prevEye);
     player.update(dt);
     if (sfx) {
