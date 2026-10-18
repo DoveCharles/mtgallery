@@ -25,7 +25,7 @@ Levels are `.glb` files in `public/levels/`, exported from Blender with
 | `spawn = 1` | an empty | Player start, looking along the empty's local +Y. |
 | `nocollide = 1` | a mesh | The player can walk through it. |
 | `hidden = 1` | a mesh | Not drawn, but still solid (ramps, invisible steps). |
-| `cardarea = 1` | floor faces | Where the sentence cards are scattered (the 5555 build script makes it from the Room mesh's `Floor` vertex group), using the level's `Card` mesh as the card. One card per line of `public/sentences.txt`. |
+| `cardarea = 1` | floor faces | The floor whose surrounding walls the sentence cards hang on, in a grid (the 5555 build script makes it from the Room mesh's `Floor` vertex group), using the level's `Card` mesh as the card. One card per line of `public/sentences.txt`. |
 
 `tools/build_test_level.py` builds the prototype level from scratch and is a working
 example of all of the above:

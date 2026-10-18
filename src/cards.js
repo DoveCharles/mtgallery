@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 
-// The sentence cards: one card per line of public/sentences.txt, scattered face up over
-// the faces tagged `cardarea` (the room's Floor vertex group), using the level's "Card" mesh as the template.
+// The sentence cards: one card per line of public/sentences.txt, hung in a tidy grid on
+// the walls around the faces tagged `cardarea` (the room's Floor vertex group), using the
+// level's "Card" mesh as the template.
 //
 // Thousands of cards would be thousands of draw calls (and thousands of textures) done
 // naively, so everything is baked into two static meshes instead: all the cards in one,
@@ -15,7 +16,11 @@ const PAD = 12; // atlas pixels around each glyph, so mipmaps don't bleed into n
 const MARGIN = 0.1; // of the card's width/height, kept clear of text
 const MAX_EM = 0.1; // largest text size, as a fraction of the card's width
 const LINE = 1.2; // line height, in ems
-const LIFT = 0.003; // cards float this far above the floor (m)
+const LIFT = 0.003; // cards float this far off the wall (m)
+const GAP = 0.15; // least space between cards, as a fraction of the card's size
+const BOTTOM = 0.4; // m above the floor the lowest row starts
+const CLEAR = 2.5; // m of open room a wall needs in front of it (so no passages or reveals)
+const FIXTURE_REACH = 0.5; // other meshes this close in front of a wall (m) keep cards off it
 const INK_LIFT = 0.0006; // and the ink this far above the card
 
 // Every line of public/sentences.txt, parsed the same way as the old Unity
@@ -42,15 +47,16 @@ export async function addCards(root) {
   });
   if (!template || !area) return null;
   root.updateMatrixWorld(true);
-  const base = template.matrixWorld.clone().setPosition(0, 0, 0).scale(new THREE.Vector3(SIZE, SIZE, SIZE));
+  // The template's size only: the walls decide which way each card faces.
+  const base = new THREE.Matrix4().makeScale(...new THREE.Vector3().setFromMatrixScale(template.matrixWorld).multiplyScalar(SIZE).toArray());
 
   const sentences = [...(await loadSentences())];
 
   const rand = mulberry32(5555);
   shuffle(sentences, rand);
 
-  // `base` is the card in its own frame (scaled/rotated like the template, but at the
-  // origin): flat on the floor, text running along local X with lines going down local Z.
+  // `base` is the card in its own frame: flat, facing local +Y, text running along local X
+  // with lines going down local Z.
   const g = template.geometry;
   g.computeBoundingBox();
   const { min, max } = g.boundingBox;
@@ -59,11 +65,13 @@ export async function addCards(root) {
   const cardH = (max.z - min.z) * scale.z;
 
   const atlas = buildAtlas(sentences);
-  const placements = scatter(area, sentences.length, Math.hypot(cardW, cardH) / 2, rand);
+  const placements = hang(findWalls(root, template, area), sentences.length, cardW, cardH, area, rand).map((m) => m.multiply(base));
+  if (placements.length < sentences.length) console.warn(`Room for only ${placements.length} of ${sentences.length} cards on the walls`);
+  sentences.length = placements.length;
   template.removeFromParent();
   area.removeFromParent();
 
-  const cards = bakeCards(g, base, placements);
+  const cards = bakeCards(g, placements);
   const ink = bakeInk(sentences, atlas, placements, base, min, max, cardW, cardH);
 
   const paper = new THREE.Mesh(cards, new THREE.MeshStandardMaterial({ color: 0xf3efe6, roughness: 0.85 }));
@@ -165,62 +173,188 @@ function fit(sentence, atlas, w, h) {
 
 // --- Placement -----------------------------------------------------------------------------
 
-// Jittered grid over the area's bounds, cards never overlapping: [x, y, z, yaw] per card.
-// Only cells lying wholly on the area's faces are used (found by dropping rays onto it),
-// so the area can be any shape.
-function scatter(area, n, radius, rand) {
+// The walls the cards can hang on: the room shell's upright faces around the card area,
+// grouped by plane. Only the parts of them that face open floor count (not the sides of
+// passages, reveals, or faces hidden in the shell), and anything else in the level just in
+// front of a wall (the sentence screens, the ceiling's edge) is kept clear as a rectangle.
+// Each wall comes back in its own 2D frame: u along it (left to right, facing it), v up.
+function findWalls(root, template, area) {
+  const floorBox = new THREE.Box3().setFromObject(area);
+  const floorCenter = floorBox.getCenter(new THREE.Vector3());
+  const meshes = [];
+  root.traverse((o) => o.isMesh && o.visible && o !== template && o !== area && meshes.push(o));
+  const boxes = new Map(meshes.map((m) => [m, new THREE.Box3().setFromObject(m)]));
+  // The shell: whatever encloses the middle of the floor. The rest are fixtures.
+  const isShell = (m) => {
+    const b = boxes.get(m);
+    return floorCenter.x >= b.min.x && floorCenter.x <= b.max.x && floorCenter.z >= b.min.z && floorCenter.z <= b.max.z;
+  };
+  const shell = meshes.filter(isShell);
+  const fixtures = meshes.filter((m) => !isShell(m));
+
+  // Every face counts as a blocker whichever way it faces. (Fixtures in front of a wall
+  // don't count here: they only keep cards off the part they cover.)
+  const sides = new Map();
+  for (const m of meshes) for (const mat of [m.material].flat()) sides.set(mat, mat.side);
+  for (const mat of sides.keys()) mat.side = THREE.DoubleSide;
   area.material.side = THREE.DoubleSide;
-  const box = new THREE.Box3().setFromObject(area);
-  const sizeX = box.max.x - box.min.x;
-  const sizeZ = box.max.z - box.min.z;
   const ray = new THREE.Raycaster();
   const down = new THREE.Vector3(0, -1, 0);
-  const groundAt = (x, z) => {
-    ray.set(new THREE.Vector3(x, box.max.y + 1, z), down);
-    return ray.intersectObject(area, false)[0]?.point.y;
+  const firstHit = (from, dir, objects, far = Infinity) => {
+    ray.set(from, dir);
+    ray.far = far;
+    return ray.intersectObjects(objects, false)[0]?.distance;
   };
-  // Shrink the grid until enough cells fit on the area.
-  for (let cell = Math.sqrt((sizeX * sizeZ) / n); ; cell *= 0.98) {
-    const cols = Math.floor(sizeX / cell);
-    const rows = Math.floor(sizeZ / cell);
-    const cells = [];
-    for (let i = 0; i < cols * rows; i++) {
-      const x = box.min.x + ((i % cols) + 0.5) * cell;
-      const z = box.min.z + (Math.floor(i / cols) + 0.5) * cell;
-      const h = cell / 2;
-      const y = groundAt(x, z);
-      if (y !== undefined && [[-h, -h], [h, -h], [h, h], [-h, h]].every(([dx, dz]) => groundAt(x + dx, z + dz) !== undefined)) {
-        cells.push([x, y, z]);
+  // Open floor in front of a point on a wall facing `n`.
+  const facesRoom = (p, n) => {
+    const from = p.clone().addScaledVector(n, 0.01);
+    if (firstHit(from, n, shell, CLEAR) !== undefined) return false;
+    const front = p.clone().addScaledVector(n, CLEAR / 2);
+    const floor = firstHit(front, down, [area]);
+    return floor !== undefined && !(firstHit(front, down, meshes) < floor - 0.05);
+  };
+
+  const walls = [];
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  const e = new THREE.Vector3();
+  const centroid = new THREE.Vector3();
+  for (const mesh of shell) {
+    const pos = mesh.geometry.getAttribute('position');
+    const index = mesh.geometry.index;
+    const count = index ? index.count : pos.count;
+    for (let i = 0; i < count; i += 3) {
+      const [ia, ib, ic] = index ? [index.getX(i), index.getX(i + 1), index.getX(i + 2)] : [i, i + 1, i + 2];
+      a.fromBufferAttribute(pos, ia).applyMatrix4(mesh.matrixWorld);
+      b.fromBufferAttribute(pos, ib).applyMatrix4(mesh.matrixWorld);
+      c.fromBufferAttribute(pos, ic).applyMatrix4(mesh.matrixWorld);
+      n.subVectors(c, b).cross(e.subVectors(a, b));
+      if (n.length() < 1e-6) continue;
+      n.normalize();
+      if (Math.abs(n.y) > 0.01) continue;
+      centroid.copy(a).add(b).add(c).divideScalar(3);
+      if (centroid.x < floorBox.min.x - 0.3 || centroid.x > floorBox.max.x + 0.3 || centroid.z < floorBox.min.z - 0.3 || centroid.z > floorBox.max.z + 0.3) continue;
+      if (!facesRoom(centroid, n)) continue;
+      const d = n.dot(a);
+      let wall = walls.find((w) => w.n.dot(n) > 0.999 && Math.abs(w.d - d) < 0.01);
+      if (!wall) {
+        const u = new THREE.Vector3(n.z, 0, -n.x); // up x n: rightwards, facing the wall
+        wall = { n: n.clone(), d, u, tris: [], umin: Infinity, umax: -Infinity, vmax: -Infinity, keepOut: [] };
+        walls.push(wall);
+      }
+      const tri = [a, b, c].map((p) => [p.dot(wall.u), p.y]);
+      wall.tris.push(tri);
+      for (const [pu, pv] of tri) {
+        wall.umin = Math.min(wall.umin, pu);
+        wall.umax = Math.max(wall.umax, pu);
+        wall.vmax = Math.max(wall.vmax, pv);
       }
     }
-    if (cells.length < n) continue;
-    shuffle(cells, rand);
-    const room = Math.max(0, cell / 2 - radius);
-    return cells.slice(0, n).map(([x, y, z]) => [x + (rand() * 2 - 1) * room, y + LIFT, z + (rand() * 2 - 1) * room, rand() * Math.PI * 2]);
   }
+  for (const [mat, side] of sides) mat.side = side;
+
+  for (const wall of walls) {
+    for (const f of fixtures) {
+      const corners = boxCorners(boxes.get(f));
+      const dist = corners.map((p) => p.dot(wall.n) - wall.d);
+      if (Math.max(...dist) < -0.05 || Math.min(...dist) > FIXTURE_REACH) continue;
+      const us = corners.map((p) => p.dot(wall.u));
+      const vs = corners.map((p) => p.y);
+      const rect = [Math.min(...us), Math.max(...us), Math.min(...vs), Math.max(...vs)];
+      if (rect[1] > wall.umin && rect[0] < wall.umax) wall.keepOut.push(rect);
+    }
+  }
+  return walls;
 }
 
-const placeMatrix = (m, [x, y, z, yaw], base) => m.makeRotationY(yaw).setPosition(x, y, z).multiply(base);
+// A grid of card-sized cells over the walls, in rows level all the way round the room,
+// each wall's columns centred on it: as big as it can be while still giving every card a
+// cell (cards GAP apart at least). Fills from the bottom row up, any spare cells being
+// scattered along the top row. Returns each card's world matrix (without the card's scale).
+function hang(walls, n, cardW, cardH, area, rand) {
+  const floorY = new THREE.Box3().setFromObject(area).max.y;
+  const inTri = (pu, pv, [[ax, ay], [bx, by], [cx, cy]]) => {
+    const d1 = (pu - bx) * (ay - by) - (ax - bx) * (pv - by);
+    const d2 = (pu - cx) * (by - cy) - (bx - cx) * (pv - cy);
+    const d3 = (pu - ax) * (cy - ay) - (cx - ax) * (pv - ay);
+    return !((d1 < -1e-9 || d2 < -1e-9 || d3 < -1e-9) && (d1 > 1e-9 || d2 > 1e-9 || d3 > 1e-9));
+  };
+  const onWall = (w, pu, pv) => w.tris.some((t) => inTri(pu, pv, t));
+  const cellsAt = (k) => {
+    const pw = cardW * k;
+    const ph = cardH * k;
+    const cells = [];
+    for (const w of walls) {
+      const cols = Math.floor((w.umax - w.umin) / pw);
+      const u0 = (w.umin + w.umax - cols * pw) / 2;
+      for (let row = 0; floorY + BOTTOM + (row + 1) * ph <= w.vmax; row++) {
+        const v0 = floorY + BOTTOM + row * ph;
+        for (let col = 0; col < cols; col++) {
+          const ua = u0 + col * pw + 1e-4;
+          const ub = ua + pw - 2e-4;
+          const va = v0 + 1e-4;
+          const vb = v0 + ph - 2e-4;
+          if (w.keepOut.some(([r0, r1, r2, r3]) => ub > r0 && ua < r1 && vb > r2 && va < r3)) continue;
+          if ([[ua, va], [ub, va], [ub, vb], [ua, vb], [(ua + ub) / 2, (va + vb) / 2]].every(([pu, pv]) => onWall(w, pu, pv))) {
+            cells.push({ w, u: (ua + ub) / 2, v: (va + vb) / 2, row });
+          }
+        }
+      }
+    }
+    return cells;
+  };
+
+  // Biggest spacing k (in card sizes) that still fits n cards: bisect between too big and big enough.
+  const area2 = walls.reduce((s, w) => s + w.tris.reduce((t, [[ax, ay], [bx, by], [cx, cy]]) => t + Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2, 0), 0);
+  let hi = Math.sqrt(area2 / (n * cardW * cardH)) * 1.01;
+  let lo = hi;
+  let cells;
+  while ((cells = cellsAt(lo)).length < n && lo > 1 + GAP) lo *= 0.9;
+  lo = Math.max(lo, 1 + GAP);
+  if (cells.length >= n) {
+    for (let i = 0; i < 20; i++) {
+      const mid = (lo + hi) / 2;
+      if (cellsAt(mid).length >= n) lo = mid;
+      else hi = mid;
+    }
+    cells = cellsAt(lo);
+  } else cells = cellsAt(lo);
+
+  shuffle(cells, rand);
+  cells.sort((p, q) => p.row - q.row);
+  const up = new THREE.Vector3(0, 1, 0);
+  const down = new THREE.Vector3(0, -1, 0);
+  return cells.slice(0, n).map(({ w, u, v }) =>
+    // Card +X along the wall, +Y out of it, +Z down it.
+    new THREE.Matrix4().makeBasis(w.u, w.n, down).setPosition(w.n.clone().multiplyScalar(w.d + LIFT).addScaledVector(w.u, u).addScaledVector(up, v)),
+  );
+}
+
+function boxCorners(box) {
+  const out = [];
+  for (let i = 0; i < 8; i++) out.push(new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z));
+  return out;
+}
 
 // --- Baking --------------------------------------------------------------------------------
 
-function bakeCards(template, base, placements) {
+function bakeCards(template, placements) {
   const g = template.index ? template.toNonIndexed() : template;
   const pos = g.getAttribute('position');
   const nor = g.getAttribute('normal');
   const n = pos.count;
   const positions = new Float32Array(placements.length * n * 3);
   const normals = new Float32Array(placements.length * n * 3);
-  const m = new THREE.Matrix4();
   const nm = new THREE.Matrix3();
   const v = new THREE.Vector3();
-  placements.forEach((p, i) => {
-    placeMatrix(m, p, base);
+  placements.forEach((m, i) => {
     nm.getNormalMatrix(m);
     for (let j = 0; j < n; j++) {
       v.fromBufferAttribute(pos, j).applyMatrix4(m).toArray(positions, (i * n + j) * 3);
       if (nor) v.fromBufferAttribute(nor, j).applyMatrix3(nm).normalize().toArray(normals, (i * n + j) * 3);
-      else normals.set([0, 1, 0], (i * n + j) * 3);
+      else v.set(0, 1, 0).applyMatrix3(nm).normalize().toArray(normals, (i * n + j) * 3);
     }
   });
   const out = new THREE.BufferGeometry();
@@ -266,10 +400,9 @@ function bakeInk(sentences, atlas, placements, base, min, max, cardW, cardH) {
   const positions = new Float32Array(count * 4 * 3);
   const uvs = new Float32Array(count * 4 * 2);
   const index = new Uint32Array(count * 6);
-  const m = new THREE.Matrix4();
   const v = new THREE.Vector3();
   layout.forEach(([from, to], i) => {
-    placeMatrix(m, placements[i], base);
+    const m = placements[i];
     for (let q = from; q < to; q++) {
       const [x0, z0, x1, z1, gl] = quads[q];
       const corners = [

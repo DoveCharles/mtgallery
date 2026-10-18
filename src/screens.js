@@ -13,7 +13,7 @@ import { loadSentences } from './cards.js';
 // nothing is drawn or lit behind them: area lights cast no shadows and would shine
 // straight through it.)
 
-const INTERVALS = [1, 0.5, 0.25]; // seconds, left to right
+const INTERVALS = [1, 2, 0.5]; // seconds, left to right
 const FONT = 'bold Georgia, "Times New Roman", serif';
 const CANVAS_W = 1024;
 const MARGIN = 0.1; // of the panel's width/height, kept clear of text

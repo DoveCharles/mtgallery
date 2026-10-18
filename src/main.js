@@ -78,9 +78,9 @@ const LIGHT_BOX = 'BulbRoom';
 // "Entrance" portal): one room for the code, or one per door (by the door's mesh name).
 // Rooms share the scene with the starting area, each moved out of the way, and are lit
 // by the shared sky plus their own sun and lights (see setWorld).
-// Looking down at the cards in room 5555 (left) zooms in so they can be read.
+// Looking up at the cards on the walls in room 5555 (left) zooms in so the high ones can be read.
 const ZOOM_WORLD = 'room5555-left';
-const ZOOM_PITCH = [0.35, 1.2]; // downward pitch (rad) where the zoom starts, and where it's full
+const ZOOM_PITCH = [0.35, 1.2]; // upward pitch (rad) where the zoom starts, and where it's full
 const ZOOM_MAX = 2.5; // magnification at full zoom
 const ZOOM_RATE = 6; // how fast the zoom eases toward its target (1/s)
 
@@ -784,7 +784,7 @@ async function start() {
     if (!keypads?.update(dt, portals.world === 'start') && !cutscene) {
       portals.handleTraversal(player, prevEye, player.getEye(eye));
       player.updateCamera();
-      const t = portals.world === ZOOM_WORLD ? THREE.MathUtils.smoothstep(-player.pitch, ZOOM_PITCH[0], ZOOM_PITCH[1]) : 0;
+      const t = portals.world === ZOOM_WORLD ? THREE.MathUtils.smoothstep(player.pitch, ZOOM_PITCH[0], ZOOM_PITCH[1]) : 0;
       zoom += (THREE.MathUtils.lerp(1, ZOOM_MAX, t) - zoom) * (1 - Math.exp(-ZOOM_RATE * dt));
       const fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(PLAY_FOV / 2)) / zoom));
       if (Math.abs(camera.fov - fov) > 1e-3) {
