@@ -17,7 +17,8 @@ const MARGIN = 0.1; // of the card's width/height, kept clear of text
 const MAX_EM = 0.1; // largest text size, as a fraction of the card's width
 const LINE = 1.2; // line height, in ems
 const LIFT = 0.003; // cards float this far off the wall (m)
-const GAP = 0.15; // least space between cards, as a fraction of the card's size
+const GAP = 0.15; // space between rows, as a fraction of the card's height
+const ROWS = 12; // rows of cards up the walls, leaving the tops of the walls bare
 const BOTTOM = 0.4; // m above the floor the lowest row starts
 const CLEAR = 2.5; // m of open room a wall needs in front of it (so no passages or reveals)
 const FIXTURE_REACH = 0.5; // other meshes this close in front of a wall (m) keep cards off it
@@ -269,10 +270,9 @@ function findWalls(root, template, area) {
   return walls;
 }
 
-// A grid of card-sized cells over the walls, in rows level all the way round the room,
-// each wall's columns centred on it: as big as it can be while still giving every card a
-// cell (cards GAP apart at least). Fills from the bottom row up, any spare cells being
-// scattered along the top row. Returns each card's world matrix (without the card's scale).
+// A grid of card-sized cells over the walls, ROWS rows level all the way round the room,
+// each wall's columns centred on it and spaced as widely as still gives every card a cell.
+// Fills from the bottom row up, any spare cells being scattered along the top row. Returns each card's world matrix (without the card's scale).
 function hang(walls, n, cardW, cardH, area, rand) {
   const floorY = new THREE.Box3().setFromObject(area).max.y;
   const inTri = (pu, pv, [[ax, ay], [bx, by], [cx, cy]]) => {
@@ -282,14 +282,14 @@ function hang(walls, n, cardW, cardH, area, rand) {
     return !((d1 < -1e-9 || d2 < -1e-9 || d3 < -1e-9) && (d1 > 1e-9 || d2 > 1e-9 || d3 > 1e-9));
   };
   const onWall = (w, pu, pv) => w.tris.some((t) => inTri(pu, pv, t));
+  const ph = cardH * (1 + GAP);
   const cellsAt = (k) => {
     const pw = cardW * k;
-    const ph = cardH * k;
     const cells = [];
     for (const w of walls) {
       const cols = Math.floor((w.umax - w.umin) / pw);
       const u0 = (w.umin + w.umax - cols * pw) / 2;
-      for (let row = 0; floorY + BOTTOM + (row + 1) * ph <= w.vmax; row++) {
+      for (let row = 0; row < ROWS && floorY + BOTTOM + (row + 1) * ph <= w.vmax; row++) {
         const v0 = floorY + BOTTOM + row * ph;
         for (let col = 0; col < cols; col++) {
           const ua = u0 + col * pw + 1e-4;
@@ -306,21 +306,16 @@ function hang(walls, n, cardW, cardH, area, rand) {
     return cells;
   };
 
-  // Biggest spacing k (in card sizes) that still fits n cards: bisect between too big and big enough.
-  const area2 = walls.reduce((s, w) => s + w.tris.reduce((t, [[ax, ay], [bx, by], [cx, cy]]) => t + Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2, 0), 0);
-  let hi = Math.sqrt(area2 / (n * cardW * cardH)) * 1.01;
-  let lo = hi;
-  let cells;
-  while ((cells = cellsAt(lo)).length < n && lo > 1 + GAP) lo *= 0.9;
-  lo = Math.max(lo, 1 + GAP);
-  if (cells.length >= n) {
-    for (let i = 0; i < 20; i++) {
-      const mid = (lo + hi) / 2;
-      if (cellsAt(mid).length >= n) lo = mid;
-      else hi = mid;
-    }
-    cells = cellsAt(lo);
-  } else cells = cellsAt(lo);
+  // Widest spacing k (in card widths) that still fits n cards, bisecting between too wide
+  // and wide enough. At k = 1 the cards touch: if even that's not enough, some are left out.
+  let lo = 1;
+  let hi = 4;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (cellsAt(mid).length >= n) lo = mid;
+    else hi = mid;
+  }
+  const cells = cellsAt(lo);
 
   shuffle(cells, rand);
   cells.sort((p, q) => p.row - q.row);
