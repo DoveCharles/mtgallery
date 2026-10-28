@@ -152,8 +152,9 @@ export async function addSentenceScreens(level, listener, world) {
   };
 }
 
-// Word-wrapped and centred, as big as fits (up to MAX_EM of the height).
-function draw(canvas, sentence) {
+// Word-wrapped and centred, as big as fits (up to MAX_EM of the height). Also the movie's
+// (see movie.js).
+export function draw(canvas, sentence) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width * (1 - MARGIN * 2);
   const h = canvas.height * (1 - MARGIN * 2);

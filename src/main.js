@@ -11,6 +11,7 @@ import { Bloom } from './bloom.js';
 import { softShadows } from './shadows.js';
 import { addCards } from './cards.js';
 import { addSentenceScreens } from './screens.js';
+import { addMovie } from './movie.js';
 import { applyShadeZones, addVoid, setLightBox } from './shade.js';
 import { addFlickeringBulb } from './bulb.js';
 import { addVideoScreen } from './video.js';
@@ -78,7 +79,8 @@ const LIGHT_BOX = 'BulbRoom';
 // "Entrance" portal): one room for the code, or one per door (by the door's mesh name).
 // Rooms share the scene with the starting area, each moved out of the way, and are lit
 // by the shared sky plus their own sun and lights (see setWorld).
-// Looking up at the cards on the walls in room 5555 (left) zooms in so the high ones can be read.
+// Looking up in room 5555 (left) zooms in (from when it had sentence cards up its walls, so
+// the high ones could be read).
 const ZOOM_WORLD = 'room5555-left';
 const ZOOM_PITCH = [0.35, 1.2]; // upward pitch (rad) where the zoom starts, and where it's full
 const ZOOM_MAX = 2.5; // magnification at full zoom
@@ -674,6 +676,8 @@ async function start() {
       setWorld?.lights[s.world]?.push(l);
     }
   }
+  const movies = (await Promise.all([level, ...rooms].map((l, i) => addMovie(l, worldNames[i])))).filter(Boolean);
+  for (const m of movies) for (const l of m.lights) setWorld?.lights[m.world]?.push(l);
   const bulbs = (await Promise.all([level, ...rooms].map((l, i) => addFlickeringBulb(l, listener, worldNames[i], roomEnv)))).filter(Boolean);
   for (const b of bulbs) setWorld?.lights[b.world]?.push(b.light);
   const tvLights = tvScreens.map(tvLight);
@@ -741,7 +745,7 @@ async function start() {
 
   const ao = new AmbientOcclusion(renderer, scene, camera);
   // Card text too: its letter quads are solid in the AO's normal pass and would come out as black bars.
-  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText')), ...screens.flatMap((s) => s.meshes), ...bulbs.flatMap((b) => b.meshes), ...videos.flatMap((v) => v.meshes), ...spaceMeshes, ...tvScreens];
+  ao.hidden = [...portals.screens, ...cards.map((c) => c.getObjectByName('CardText')), ...screens.flatMap((s) => s.meshes), ...movies.flatMap((m) => m.meshes), ...bulbs.flatMap((b) => b.meshes), ...videos.flatMap((v) => v.meshes), ...spaceMeshes, ...tvScreens];
   const bloom = new Bloom(renderer, scene, camera);
   if (keypads) bloom.add(keypads.glowMeshes);
   for (const b of bulbs) bloom.add(b.glows);
@@ -797,6 +801,7 @@ async function start() {
     }
 
     for (const s of screens) s.update(dt, portals.world === s.world);
+    for (const m of movies) m.update(dt, portals.world === m.world, player);
     for (const b of bulbs) b.update(dt, portals.world === b.world);
     for (const v of videos) v.update(dt, portals.world === v.world);
     for (const h of tvHiss) h.update(portals.world === TV.room);

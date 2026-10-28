@@ -13,9 +13,12 @@ starting area's scale (that opening is 2 x 3.16, the doors 2.5 x 3.955), so it i
 exported scaled up by SCALE. glTF has no Glass BSDF, so glass materials are exported as
 clear, mostly transparent surfaces instead. The .blend itself is left untouched.
 
-The "Card" mesh (Left room) is the template for the sentence cards: the game lays one
-card per line of public/sentences.txt over the faces of the Room mesh's "Floor" vertex
-group, copied out here into a `cardarea` mesh (see src/cards.js).
+The Left room is a cinema: the "CardMovie" screen shows every sentence once, and the
+"Curtains" in front of it open as you walk in (see src/movie.js, which also mirrors the
+curtains to the screen's other side). It used to be the sentence cards instead, with CARDS
+on: the "Card" mesh is the template for them, and the game lays one card per line of
+public/sentences.txt over the faces of the Room mesh's "Floor" vertex group, copied out
+here into a `cardarea` mesh (see src/cards.js). With CARDS off the template is dropped.
 
 The wax frames' "Cover" vertex group (the covers over the scans) is exported in a material
 of its own, COVER_MATERIAL, so the game can fade the covers (see GALLERY in src/main.js).
@@ -37,6 +40,7 @@ SCALE = 1.25
 VARIANTS = {"Left": "room5555-left", "Right": "room5555-right"}
 PORTAL_MATERIAL = "PortalFace"
 GLASS_ALPHA = 0.15
+CARDS = False  # the sentence cards in the Left room (it's the cinema now, see above)
 CARD_FLOOR_GROUP = "Floor"  # vertex group on the Room mesh: the faces the cards are spread over
 UNIFORM = {"Ceiling": "Material.003"}  # objects exported all in one material (the walls')
 # The Dierama (Right room): a box whose doors (DieramaDoors) each have a slit through them,
@@ -204,6 +208,9 @@ def tag_cards(keep):
     card = bpy.data.objects.get("Card")
     if not card:
         return
+    if not CARDS:
+        bpy.data.objects.remove(card)
+        return
     card["nocollide"] = 1
     room = bpy.data.objects["Room"]
     group = room.vertex_groups.get(CARD_FLOOR_GROUP)
@@ -222,6 +229,13 @@ def tag_cards(keep):
     area["cardarea"] = 1
     area["nocollide"] = 1
     bpy.data.collections[keep].objects.link(area)
+
+
+def tag_cinema():
+    """The curtains change size as you walk in, so they're walked through."""
+    curtains = bpy.data.objects.get("Curtains")
+    if curtains:
+        curtains["nocollide"] = 1
 
 
 def split_covers():
@@ -289,6 +303,7 @@ def build(keep):
     if keep == "Right":
         wax_rows()
     tag_cards(keep)
+    tag_cinema()
 
     # Everything under one scaled root (scaling the objects themselves would change
     # their bevel/solidify modifiers).
