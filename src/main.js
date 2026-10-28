@@ -749,6 +749,7 @@ async function start() {
   const bloom = new Bloom(renderer, scene, camera);
   if (keypads) bloom.add(keypads.glowMeshes);
   for (const b of bulbs) bloom.add(b.glows);
+  for (const m of movies) bloom.add(m.glows);
   await warmUp(portals, ao, bloom);
   overlay.classList.add('hidden');
 
