@@ -140,8 +140,9 @@ const CARPET_GLOW = { CarpetClosed: 0.16 };
 const SPACE = ['Star'];
 // The window at the Star corridor's end, the only thing in it besides space (see windowMask).
 const SPACE_WINDOW = { corridor: 'Star', window: 'WindowWall' };
-// Worlds drawn without the black ground, so their windows show sky all the way down.
-const NO_GROUND = new Set(['bedroom-open']);
+// Worlds drawn without the black ground: the open bedroom, so its windows show sky all the
+// way down; room 5555 (left), whose cinema floor slopes down through it.
+const NO_GROUND = new Set(['bedroom-open', 'room5555-left']);
 // Exits (the far end of a LINK) masked down to their slit's opening (see slitMask): with space
 // in the closed bedroom's Star corridor, with the white of its walls in the open one's.
 const SLIT_MASKED = { 'bedroom-closed/Exit': 'space', 'bedroom-open/Exit': 'wall' };
