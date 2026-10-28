@@ -15,7 +15,7 @@ const RUNTIME = 2 * 60 * 60; // s
 const OPEN_AT = 0.5; // of the way from the cinema's back wall to the screen
 const BACK_RAY = 3; // m out from the screen the search for the back wall starts (past the curtain rail)
 // The curtains' scale across the screen (their local z here; y in the .blend).
-const CLOSED = 0.685646;
+const CLOSED = 0.74; // past the middle of the screen, so the two overlap and no sliver shows between their folds
 const OPEN = 0.172439;
 const CANVAS_W = 2048;
 const OFFSET = 0.01; // m the text floats off the screen
