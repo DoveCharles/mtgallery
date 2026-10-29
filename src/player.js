@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 const PHYSICS_STEPS = 5;
+const WALKABLE = 0.7; // a surface this upright (its normal's y) or more is ground, not wall: up to ~45°
 const NO_KEYS = new Set();
 
 const _segment = new THREE.Line3();
@@ -194,7 +195,9 @@ export class Player {
   }
 
   step(dt, move) {
-    if (this.onGround) this.velocity.y = dt * this.gravity;
+    // On the ground, also pressed down as fast as it walks (held to slopes up to 45° walking
+    // down them, rather than stepping off into the air each step).
+    if (this.onGround) this.velocity.y = dt * this.gravity - Math.hypot(move.x, move.z);
     else this.velocity.y += dt * this.gravity;
 
     this.position.addScaledVector(this.velocity, dt);
@@ -224,15 +227,17 @@ export class Player {
     for (const b of this.blockers) this.pushOutOfBox(b, _segment, r);
 
     _delta.copy(_segment.start).setY(_segment.start.y - r).sub(this.position);
-    this.onGround = _delta.y > Math.abs(dt * this.velocity.y * 0.25);
-
     const offset = Math.max(0, _delta.length() - 1e-5);
-    _delta.normalize().multiplyScalar(offset);
-    this.position.add(_delta);
+    _delta.normalize();
+    // Pushed up out of walkable ground (however hard it landed: on a slope, sliding off a
+    // landing would carry on downhill like ice).
+    this.onGround = offset > 0 && _delta.y > WALKABLE;
+    // Out of walkable ground straight up (out along a slope's normal would slide it downhill).
+    if (_delta.y > WALKABLE) this.position.y += offset / _delta.y;
+    else this.position.addScaledVector(_delta, offset);
 
     if (!this.onGround) {
-      _delta.normalize();
-      this.velocity.addScaledVector(_delta, -_delta.dot(this.velocity));
+      if (offset > 0) this.velocity.addScaledVector(_delta, -_delta.dot(this.velocity));
     } else {
       this.velocity.set(0, 0, 0);
     }
