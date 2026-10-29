@@ -20,14 +20,14 @@ import { applyShadeZones } from './shade.js';
 const RUNTIME = 2 * 60 * 60; // s
 // Of the way from the cinema's back wall to the screen:
 const TRIGGER = 0.25; // the show starts
-const WALL_AT = 0.75; // the invisible wall
+const WALL_AT = 0.5; // the invisible wall
 const DIM_TIME = 3; // s
 const OPEN_TIME = 6; // s
 const STRIP_DIM = 0.15; // of the floor strips' light left once the house lights are down (the uplights go right out)
 const BACK_RAY = 3; // m out from the screen the search for the back wall starts (past the curtain rail)
-// The curtains' scale across the screen (their local z here; y in the .blend).
-const CLOSED = 0.74; // past the middle of the screen, so the two overlap and no sliver shows between their folds
-const OPEN = 0.172439;
+// Closed, each curtain reaches this far past the middle of the screen (m), so the two overlap
+// and no sliver shows between their folds. Open, they're as they are in the .blend.
+const OVERLAP = 0.4;
 const CANVAS_W = 2048;
 const OFFSET = 0.01; // m the text floats off the screen
 const GLOW = 0.7; // the screen's area light at full (it fades with the curtains)
@@ -42,7 +42,7 @@ const STRIP_LIGHT = { height: 0.25, intensity: 6, tilt: 0.35 }; // its area ligh
 // The lamps on the floor shining up the closed curtains: `out` m in front of them, evenly
 // spaced across the pair of them (half a gap in from each end), aimed `aim` of the way up.
 // They graze the curtains: the closer in, the lower down the light starts.
-const UPLIGHT = { count: 6, out: 0.35, aim: 0.6, intensity: 25, angle: 0.3, penumbra: 0.7, color: 0xffc27a };
+const UPLIGHT = { count: 8, out: 0.35, aim: 0.6, intensity: 25, angle: 0.3, penumbra: 0.7, color: 0xffc27a };
 const LAMP = { radius: 0.07, height: 0.1 }; // m; the lamp itself, a can with a glowing lens on top
 // The curtains are velvet: their colour from the .blend, a little deeper (BODY of it), with
 // a sheen of it (lighter, see velvet()) that glows where the light grazes the pile, and a
@@ -230,6 +230,7 @@ export async function addMovie(level, world) {
   // each sized by its own local matrix (from `base`, with the opening scale put in).
   const curtains = [];
   let sizeCurtains = null;
+  let closedScale, openScale; // the curtains' scale along their local z (y in the .blend)
   if (curtain) {
     const parent = curtain.parent;
     const base = { position: curtain.position.clone(), quaternion: curtain.quaternion.clone(), scale: curtain.scale.clone() };
@@ -255,7 +256,15 @@ export async function addMovie(level, world) {
         mesh.matrixWorldNeedsUpdate = true;
       }
     };
-    sizeCurtains(CLOSED);
+    // Each runs from its outer edge (its origin) along its local -z, its length in step with
+    // its scale there: closed, from there to OVERLAP past the middle.
+    curtain.geometry.computeBoundingBox();
+    const local = new THREE.Vector3().setFromMatrixColumn(parent.matrixWorld.clone().multiply(new THREE.Matrix4().makeRotationFromQuaternion(base.quaternion)), 2);
+    const perScale = local.length() * -curtain.geometry.boundingBox.min.z;
+    const edge = new THREE.Vector3().setFromMatrixPosition(curtain.matrixWorld);
+    openScale = base.scale.z;
+    closedScale = (Math.abs(edge.dot(right) - center.dot(right)) + OVERLAP) / perScale;
+    sizeCurtains(closedScale);
   }
 
   let state = 'waiting'; // then 'dimming', 'opening', 'playing', and 'over'
@@ -289,7 +298,7 @@ export async function addMovie(level, world) {
       if (state === 'opening') {
         cue = Math.min(cue + dt, OPEN_TIME);
         const open = THREE.MathUtils.smoothstep(cue, 0, OPEN_TIME);
-        sizeCurtains?.(THREE.MathUtils.lerp(CLOSED, OPEN, open));
+        sizeCurtains?.(THREE.MathUtils.lerp(closedScale, openScale, open));
         light.userData.intensity = light.intensity = GLOW * open;
         if (cue === OPEN_TIME) state = 'playing';
         return;
