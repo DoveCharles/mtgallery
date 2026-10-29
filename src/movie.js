@@ -127,7 +127,7 @@ export async function addMovie(level, world) {
   light.userData.intensity = 0;
   group.add(light);
 
-  // The floor strips: down the rake, from the back wall to the screen's wall, each with an
+  // The floor strips: down the rake, from the back wall to the stage (or screen's wall), each with an
   // area light along it shining down and in across the floor.
   const halo = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ color: HALO }));
   halo.matrix.makeBasis(right, up, front).setPosition(center.clone().addScaledVector(front, size.dot(front) / 2 + OFFSET / 2));
@@ -138,6 +138,10 @@ export async function addMovie(level, world) {
   const lights = [light];
   const stripMaterial = new THREE.MeshBasicMaterial({ color: STRIP.color });
   const stripLights = [];
+  // The floor runs up to the stage's front, if there is one, else the screen's wall.
+  const stage = root.getObjectByName('Stage');
+  const stageBox = stage && new THREE.Box3().setFromObject(stage);
+  const floorEnd = stage ? Math.min(stageBox.min.dot(inward), stageBox.max.dot(inward)) : center.dot(inward) - size.dot(front) / 2;
   for (const side of sides) {
     const across = side.clone().sub(center).projectOnVector(right);
     const out = across.clone().normalize(); // towards this side's wall
@@ -146,7 +150,7 @@ export async function addMovie(level, world) {
       return hit(p, new THREE.Vector3(0, -1, 0)) ?? p.setY(box.min.y);
     };
     const a = floorAt(start + SIDE_INSET);
-    const b = floorAt(center.dot(inward) - size.dot(front) / 2 - SIDE_INSET);
+    const b = floorAt(floorEnd - SIDE_INSET);
     const along = b.clone().sub(a);
     const length = along.length();
     along.normalize();
