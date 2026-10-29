@@ -41,8 +41,8 @@ const STRIP = { width: 0.06, height: 0.03, color: 0xffa24a }; // m; the glowing 
 const STRIP_LIGHT = { height: 0.25, intensity: 6, tilt: 0.35 }; // its area light (m tall, tilt of its face from straight down, in turns of 90°)
 // The lamps on the floor shining up the closed curtains: `out` m in front of them, evenly
 // spaced across the pair of them (half a gap in from each end), aimed `aim` of the way up.
-// They graze the curtains, so how high the light climbs is `reach` (m, where it fades out).
-const UPLIGHT = { count: 6, out: 0.7, aim: 0.35, reach: 7, intensity: 25, angle: 0.3, penumbra: 0.7, color: 0xffc27a };
+// They graze the curtains: the closer in, the lower down the light starts.
+const UPLIGHT = { count: 6, out: 0.35, aim: 0.6, intensity: 25, angle: 0.3, penumbra: 0.7, color: 0xffc27a };
 const LAMP = { radius: 0.07, height: 0.1 }; // m; the lamp itself, a can with a glowing lens on top
 
 export async function addMovie(level, world) {
@@ -184,7 +184,7 @@ export async function addMovie(level, world) {
       group.add(can, lens);
       glows.push(lens);
 
-      const spot = new THREE.SpotLight(UPLIGHT.color, UPLIGHT.intensity, UPLIGHT.reach, UPLIGHT.angle, UPLIGHT.penumbra, 2);
+      const spot = new THREE.SpotLight(UPLIGHT.color, UPLIGHT.intensity, 0, UPLIGHT.angle, UPLIGHT.penumbra, 2);
       spot.position.copy(floor).setY(floor.y + LAMP.height + 0.01);
       spot.target.position.copy(onFace).setY(THREE.MathUtils.lerp(floor.y, cb.max.y, UPLIGHT.aim));
       spot.userData.intensity = UPLIGHT.intensity;
