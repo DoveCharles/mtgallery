@@ -290,6 +290,14 @@ def uniform_materials():
 
 def build(keep):
     bpy.ops.wm.open_mainfile(filepath=BLEND)
+    # Whatever's switched off in the .blend while editing (an excluded collection's objects
+    # aren't evaluated, so they'd export at the origin).
+    def include(layer):
+        layer.exclude = False
+        for child in layer.children:
+            include(child)
+    include(bpy.context.view_layer.layer_collection)
+    bpy.context.view_layer.update()
     for name in VARIANTS:
         if name != keep:
             for o in list(bpy.data.collections[name].all_objects):
