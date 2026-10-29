@@ -833,7 +833,7 @@ async function start() {
     renderer.domElement.requestPointerLock?.()?.catch?.(() => {});
   });
 
-  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, bloom, intro: () => intro, keypads: () => keypads, setWorld: (w) => setWorld?.(w), sfx };
+  if (import.meta.env.DEV) window.__mt = { THREE, scene, camera, player, portals, renderer, ao, bloom, movies, intro: () => intro, keypads: () => keypads, setWorld: (w) => setWorld?.(w), sfx };
 }
 
 // Compiles every shader and allocates every render target the game can need while still

@@ -44,6 +44,15 @@ const STRIP_LIGHT = { height: 0.25, intensity: 6, tilt: 0.35 }; // its area ligh
 // They graze the curtains: the closer in, the lower down the light starts.
 const UPLIGHT = { count: 6, out: 0.35, aim: 0.6, intensity: 25, angle: 0.3, penumbra: 0.7, color: 0xffc27a };
 const LAMP = { radius: 0.07, height: 0.1 }; // m; the lamp itself, a can with a glowing lens on top
+// The curtains are velvet: their colour from the .blend, a little deeper (BODY of it), with
+// a sheen of it (lighter, see velvet()) that glows where the light grazes the pile, and a
+// grain to the pile, a PILE px tile repeated PILE_REPEAT times across them (their UVs span
+// the whole curtain).
+const BODY = 0.75;
+const SHEEN = { roughness: 0.5, lighten: 0.2, desaturate: 0.1 };
+const PILE = 256;
+const PILE_REPEAT = 10;
+const PILE_DEPTH = 1.5; // the grain's normal map strength
 
 export async function addMovie(level, world) {
   const { root } = level;
@@ -51,6 +60,8 @@ export async function addMovie(level, world) {
   const curtain = root.getObjectByName('Curtains');
   if (!screen?.isMesh) return null;
   root.updateMatrixWorld(true);
+  // Before the shade zones, which patch it like the rest (and before it's mirrored, below).
+  if (curtain?.isMesh) curtain.material = velvet(curtain.material);
   const sentences = shuffle([...(await loadSentences())]);
   const interval = RUNTIME / sentences.length;
   RectAreaLightUniformsLib.init();
@@ -290,6 +301,77 @@ export async function addMovie(level, world) {
       if (i === sentences.length) state = 'over';
     },
   };
+}
+
+function velvet(from) {
+  const color = from.color.clone();
+  return new THREE.MeshPhysicalMaterial({
+    name: 'Velvet',
+    color: color.clone().multiplyScalar(BODY),
+    roughness: 1,
+    metalness: 0,
+    sheen: 1,
+    sheenColor: color.clone().offsetHSL(0, -SHEEN.desaturate, SHEEN.lighten),
+    sheenRoughness: SHEEN.roughness,
+    normalMap: pileNormals(),
+    normalScale: new THREE.Vector2(PILE_DEPTH, PILE_DEPTH),
+    side: from.side,
+  });
+}
+
+// A tiling normal map of velvet's pile: per-fibre grain, softened a little, over a gentle
+// mottling where the pile lies one way or another.
+function pileNormals() {
+  const n = PILE;
+  const wrap = (i) => (i + n) % n;
+  const h = new Float32Array(n * n);
+  for (let i = 0; i < h.length; i++) h[i] = Math.random();
+  // Soften the grain (a 3×3 box blur, wrapped so it still tiles).
+  const soft = new Float32Array(n * n);
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      let sum = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) sum += h[wrap(y + dy) * n + wrap(x + dx)];
+      soft[y * n + x] = sum / 9;
+    }
+  // The mottling: smooth value noise over a CELLS × CELLS lattice, which tiles with the grain.
+  const CELLS = 4;
+  const lattice = Array.from({ length: CELLS * CELLS }, Math.random);
+  const smooth = (t) => t * t * (3 - 2 * t);
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const gx = (x / n) * CELLS;
+      const gy = (y / n) * CELLS;
+      const x0 = Math.floor(gx);
+      const y0 = Math.floor(gy);
+      const at = (i, j) => lattice[((y0 + j) % CELLS) * CELLS + ((x0 + i) % CELLS)];
+      const tx = smooth(gx - x0);
+      const ty = smooth(gy - y0);
+      const v = THREE.MathUtils.lerp(THREE.MathUtils.lerp(at(0, 0), at(1, 0), tx), THREE.MathUtils.lerp(at(0, 1), at(1, 1), tx), ty);
+      soft[y * n + x] += v * 4; // gentle: spread over many pixels, so its slopes stay small
+    }
+  const data = new Uint8Array(n * n * 4);
+  const v = new THREE.Vector3();
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const dx = soft[y * n + wrap(x + 1)] - soft[y * n + wrap(x - 1)];
+      const dy = soft[wrap(y + 1) * n + x] - soft[wrap(y - 1) * n + x];
+      v.set(-dx, -dy, 1).normalize();
+      const i = (y * n + x) * 4;
+      data[i] = (v.x * 0.5 + 0.5) * 255;
+      data[i + 1] = (v.y * 0.5 + 0.5) * 255;
+      data[i + 2] = (v.z * 0.5 + 0.5) * 255;
+      data[i + 3] = 255;
+    }
+  const texture = new THREE.DataTexture(data, n, n);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(PILE_REPEAT, PILE_REPEAT);
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.anisotropy = 8;
+  texture.needsUpdate = true;
+  return texture;
 }
 
 function shuffle(a) {
