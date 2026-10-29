@@ -679,6 +679,7 @@ async function start() {
   }
   const movies = (await Promise.all([level, ...rooms].map((l, i) => addMovie(l, worldNames[i])))).filter(Boolean);
   for (const m of movies) for (const l of m.lights) setWorld?.lights[m.world]?.push(l);
+  for (const m of movies) player.blockers.push(...m.blockers);
   const bulbs = (await Promise.all([level, ...rooms].map((l, i) => addFlickeringBulb(l, listener, worldNames[i], roomEnv)))).filter(Boolean);
   for (const b of bulbs) setWorld?.lights[b.world]?.push(b.light);
   const tvLights = tvScreens.map(tvLight);

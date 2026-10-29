@@ -6,17 +6,24 @@ import { applyShadeZones } from './shade.js';
 
 // The cinema (room 5555 left): the "CardMovie" screen shows every sentence once, in an order
 // shuffled once, each for the same time, so the whole film runs RUNTIME. The "Curtains" in
-// front of it (one side in the .blend, mirrored here to the other side of the screen) are
-// shut while you're at the back of the cinema and open as you walk down to the screen, all
-// the way by OPEN_AT of the way there. The film starts the first time they're all the way
-// open, and only runs while you're in the room, so none of it is missed; once it's over the
-// screen stays blank.
+// front of it (one side in the .blend, mirrored here to the other side of the screen) start
+// shut, lit by a row of UPLIGHT lamps on the floor in front of them. Once you're TRIGGER of
+// the way from the cinema's back wall to the screen the show starts by itself: the house
+// lights (the uplights and the floor strips) dim over DIM_TIME, then the curtains part over
+// OPEN_TIME, then the film starts. It only runs while you're in the room, so none of it is
+// missed; once it's over the screen stays blank. An invisible wall WALL_AT of the way down
+// keeps you back from the screen.
 // The cinema is dark (a shade zone, see shade.js, from its back wall to the screen): what
-// lights it is the screen's glow, once the curtains part, and a strip of light along the
-// floor down each side, SIDE_INSET m in from the side walls.
+// lights it is the screen's glow, once the curtains part, the uplights, and a strip of light
+// along the floor down each side, SIDE_INSET m in from the side walls.
 
 const RUNTIME = 2 * 60 * 60; // s
-const OPEN_AT = 0.5; // of the way from the cinema's back wall to the screen
+// Of the way from the cinema's back wall to the screen:
+const TRIGGER = 0.25; // the show starts
+const WALL_AT = 0.75; // the invisible wall
+const DIM_TIME = 3; // s
+const OPEN_TIME = 6; // s
+const STRIP_DIM = 0.15; // of the floor strips' light left once the house lights are down (the uplights go right out)
 const BACK_RAY = 3; // m out from the screen the search for the back wall starts (past the curtain rail)
 // The curtains' scale across the screen (their local z here; y in the .blend).
 const CLOSED = 0.74; // past the middle of the screen, so the two overlap and no sliver shows between their folds
@@ -32,6 +39,10 @@ const DARK = 0.01; // of the sky and bounce light that reaches into the cinema
 const SIDE_INSET = 0.5; // m
 const STRIP = { width: 0.06, height: 0.03, color: 0xffa24a }; // m; the glowing strip itself
 const STRIP_LIGHT = { height: 0.25, intensity: 6, tilt: 0.35 }; // its area light (m tall, tilt of its face from straight down, in turns of 90°)
+// The lamps on the floor shining up the closed curtains: `out` m in front of them, spread
+// over `spread` of the screen's width, aimed `aim` of the way up the curtains.
+const UPLIGHT = { count: 6, out: 0.7, spread: 0.85, aim: 0.6, intensity: 25, angle: 0.3, penumbra: 0.7, color: 0xffc27a };
+const LAMP = { radius: 0.07, height: 0.1 }; // m; the lamp itself, a can with a glowing lens on top
 
 export async function addMovie(level, world) {
   const { root } = level;
@@ -114,6 +125,7 @@ export async function addMovie(level, world) {
   const glows = [halo];
   const lights = [light];
   const stripMaterial = new THREE.MeshBasicMaterial({ color: STRIP.color });
+  const stripLights = [];
   for (const side of sides) {
     const across = side.clone().sub(center).projectOnVector(right);
     const out = across.clone().normalize(); // towards this side's wall
@@ -145,7 +157,59 @@ export async function addMovie(level, world) {
     stripLight.userData.intensity = STRIP_LIGHT.intensity;
     group.add(stripLight);
     lights.push(stripLight);
+    stripLights.push(stripLight);
   }
+
+  // The uplights: a row of lamps on the floor in front of the curtains, each aimed up at them.
+  const uplights = [];
+  const lensMaterial = new THREE.MeshBasicMaterial({ color: UPLIGHT.color });
+  if (curtain) {
+    const cb = new THREE.Box3().setFromObject(curtain);
+    const face = Math.max(cb.min.dot(front), cb.max.dot(front)); // the curtains' front, along `front`
+    const canGeometry = new THREE.CylinderGeometry(LAMP.radius, LAMP.radius * 1.15, LAMP.height, 20);
+    const lensGeometry = new THREE.CircleGeometry(LAMP.radius * 0.8, 20).rotateX(-Math.PI / 2);
+    const canMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 });
+    for (let i = 0; i < UPLIGHT.count; i++) {
+      const across = ((i + 0.5) / UPLIGHT.count - 0.5) * width * UPLIGHT.spread;
+      const onFace = center.clone().addScaledVector(front, face - center.dot(front)).addScaledVector(right, across);
+      const p = onFace.clone().addScaledVector(front, UPLIGHT.out).setY(center.y);
+      const floor = hit(p, new THREE.Vector3(0, -1, 0)) ?? p.setY(cb.min.y);
+      const can = new THREE.Mesh(canGeometry, canMaterial);
+      can.position.copy(floor).setY(floor.y + LAMP.height / 2);
+      const lens = new THREE.Mesh(lensGeometry, lensMaterial);
+      lens.position.copy(floor).setY(floor.y + LAMP.height + 0.002);
+      group.add(can, lens);
+      glows.push(lens);
+
+      const spot = new THREE.SpotLight(UPLIGHT.color, UPLIGHT.intensity, 0, UPLIGHT.angle, UPLIGHT.penumbra, 2);
+      spot.position.copy(floor).setY(floor.y + LAMP.height + 0.01);
+      spot.target.position.copy(onFace).setY(THREE.MathUtils.lerp(floor.y, cb.max.y, UPLIGHT.aim));
+      spot.userData.intensity = UPLIGHT.intensity;
+      group.add(spot, spot.target);
+      lights.push(spot);
+      uplights.push(spot);
+    }
+  }
+  // The house lights at `level` (1 up, 0 down).
+  const setHouse = (level) => {
+    for (const l of uplights) l.userData.intensity = l.intensity = UPLIGHT.intensity * level;
+    lensMaterial.color.setHex(UPLIGHT.color).multiplyScalar(level);
+    const strips = THREE.MathUtils.lerp(STRIP_DIM, 1, level);
+    for (const l of stripLights) l.userData.intensity = l.intensity = STRIP_LIGHT.intensity * strips;
+    stripMaterial.color.setHex(STRIP.color).multiplyScalar(strips);
+  };
+
+  // The invisible wall: across the room WALL_AT of the way down, solid from there to past the
+  // screen (so it's always pushed back out the near side).
+  const axis = Math.abs(inward.x) > 0.5 ? 'x' : 'z';
+  const sign = Math.sign(inward[axis]);
+  const wallAt = (start + WALL_AT * depth) * sign;
+  const beyond = center[axis] + sign;
+  const wall = room.clone();
+  wall.min[axis] = Math.min(wallAt, beyond);
+  wall.max[axis] = Math.max(wallAt, beyond);
+  wall.min.y -= 10;
+  wall.max.y += 1;
   group.updateMatrixWorld(true);
 
   // The curtains: the one in the level and its mirror image across the middle of the screen,
@@ -180,10 +244,10 @@ export async function addMovie(level, world) {
     sizeCurtains(CLOSED);
   }
 
-  let state = 'waiting'; // then 'playing', then 'over'
+  let state = 'waiting'; // then 'dimming', 'opening', 'playing', and 'over'
+  let cue = 0; // s into 'dimming' or 'opening'
   let time = 0;
   let shown = -1;
-  let open = 0;
   const show = (i) => {
     if (i < sentences.length) draw(canvas, sentences[i]);
     else canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
@@ -194,19 +258,28 @@ export async function addMovie(level, world) {
     meshes: [text],
     lights,
     // For the bloom (see bloom.js): the screen's halo, the text over it (so it stays readable
-    // through the glow) and the floor strips.
+    // through the glow), the floor strips and the uplights' lenses.
     glows: [...glows, text],
     world,
+    blockers: [wall],
     // `here`: the player is in this world; `player` for how far in they are.
     update(dt, here, player) {
       if (!here) return;
-      const t = THREE.MathUtils.clamp((player.position.dot(inward) - start) / (depth * OPEN_AT), 0, 1);
-      if (t !== open) {
-        open = t;
+      if (state === 'waiting' && (player.position.dot(inward) - start) / depth >= TRIGGER) state = 'dimming';
+      if (state === 'dimming') {
+        cue = Math.min(cue + dt, DIM_TIME);
+        setHouse(1 - THREE.MathUtils.smoothstep(cue, 0, DIM_TIME));
+        if (cue === DIM_TIME) [state, cue] = ['opening', 0];
+        return;
+      }
+      if (state === 'opening') {
+        cue = Math.min(cue + dt, OPEN_TIME);
+        const open = THREE.MathUtils.smoothstep(cue, 0, OPEN_TIME);
         sizeCurtains?.(THREE.MathUtils.lerp(CLOSED, OPEN, open));
         light.userData.intensity = light.intensity = GLOW * open;
+        if (cue === OPEN_TIME) state = 'playing';
+        return;
       }
-      if (state === 'waiting' && open >= 1) state = 'playing';
       if (state !== 'playing') return;
       time += dt;
       const i = Math.min(Math.floor(time / interval), sentences.length);
