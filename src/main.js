@@ -75,17 +75,12 @@ const BLACK_WALLS = { 'room5555-right': { screen: 'Vid', under: 'Ceiling' } };
 // so it doesn't shine through the walls (see setLightBox).
 const LIGHT_BOX = 'BulbRoom';
 
+const MAX_EYE = { 'room5555-left': 5 }; // rooms where scrolling up goes past the usual 3 m
+
 // Keypad codes and the rooms they open (public/levels/<room>.glb, entered through its
 // "Entrance" portal): one room for the code, or one per door (by the door's mesh name).
 // Rooms share the scene with the starting area, each moved out of the way, and are lit
 // by the shared sky plus their own sun and lights (see setWorld).
-// Looking up in room 5555 (left) zooms in (from when it had sentence cards up its walls, so
-// the high ones could be read).
-const ZOOM_WORLD = 'room5555-left';
-const ZOOM_PITCH = [0.35, 1.2]; // upward pitch (rad) where the zoom starts, and where it's full
-const ZOOM_MAX = 2.5; // magnification at full zoom
-const MAX_EYE = { 'room5555-left': 5 }; // rooms where scrolling up goes past the usual 3 m
-const ZOOM_RATE = 6; // how fast the zoom eases toward its target (1/s)
 
 const ROOMS = { 5555: { DoorLeft: 'room5555-left', DoorRight: 'room5555-right' } };
 const roomBehind = (door, room) => (typeof room === 'string' ? room : room[door.mesh.name]);
@@ -758,7 +753,6 @@ async function start() {
   const clock = new THREE.Clock();
   const prevEye = new THREE.Vector3();
   const eye = new THREE.Vector3();
-  let zoom = 1;
 
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.1);
@@ -794,11 +788,9 @@ async function start() {
     if (!keypads?.update(dt, portals.world === 'start') && !cutscene) {
       portals.handleTraversal(player, prevEye, player.getEye(eye));
       player.updateCamera();
-      const t = portals.world === ZOOM_WORLD ? THREE.MathUtils.smoothstep(player.pitch, ZOOM_PITCH[0], ZOOM_PITCH[1]) : 0;
-      zoom += (THREE.MathUtils.lerp(1, ZOOM_MAX, t) - zoom) * (1 - Math.exp(-ZOOM_RATE * dt));
-      const fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(PLAY_FOV / 2)) / zoom));
-      if (Math.abs(camera.fov - fov) > 1e-3) {
-        camera.fov = fov;
+      // (The intro's drop narrows it, and can leave it so.)
+      if (camera.fov !== PLAY_FOV) {
+        camera.fov = PLAY_FOV;
         camera.updateProjectionMatrix();
       }
     }
