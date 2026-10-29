@@ -39,9 +39,9 @@ const DARK = 0.01; // of the sky and bounce light that reaches into the cinema
 const SIDE_INSET = 0.5; // m
 const STRIP = { width: 0.06, height: 0.03, color: 0xffa24a }; // m; the glowing strip itself
 const STRIP_LIGHT = { height: 0.25, intensity: 6, tilt: 0.35 }; // its area light (m tall, tilt of its face from straight down, in turns of 90°)
-// The lamps on the floor shining up the closed curtains: `out` m in front of them, spread
-// over `spread` of the screen's width, aimed `aim` of the way up the curtains.
-const UPLIGHT = { count: 6, out: 0.7, spread: 0.85, aim: 0.6, intensity: 25, angle: 0.3, penumbra: 0.7, color: 0xffc27a };
+// The lamps on the floor shining up the closed curtains: `out` m in front of them, evenly
+// spaced across the pair of them (half a gap in from each end), aimed `aim` of the way up.
+const UPLIGHT = { count: 6, out: 0.7, aim: 0.6, intensity: 25, angle: 0.3, penumbra: 0.7, color: 0xffc27a };
 const LAMP = { radius: 0.07, height: 0.1 }; // m; the lamp itself, a can with a glowing lens on top
 
 export async function addMovie(level, world) {
@@ -166,11 +166,13 @@ export async function addMovie(level, world) {
   if (curtain) {
     const cb = new THREE.Box3().setFromObject(curtain);
     const face = Math.max(cb.min.dot(front), cb.max.dot(front)); // the curtains' front, along `front`
+    // Both curtains together, closed: this one's far edge from the middle of the screen, either side.
+    const span = 2 * Math.max(...[cb.min, cb.max].map((c) => Math.abs(c.dot(right) - center.dot(right))));
     const canGeometry = new THREE.CylinderGeometry(LAMP.radius, LAMP.radius * 1.15, LAMP.height, 20);
     const lensGeometry = new THREE.CircleGeometry(LAMP.radius * 0.8, 20).rotateX(-Math.PI / 2);
     const canMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 });
     for (let i = 0; i < UPLIGHT.count; i++) {
-      const across = ((i + 0.5) / UPLIGHT.count - 0.5) * width * UPLIGHT.spread;
+      const across = ((i + 0.5) / UPLIGHT.count - 0.5) * span;
       const onFace = center.clone().addScaledVector(front, face - center.dot(front)).addScaledVector(right, across);
       const p = onFace.clone().addScaledVector(front, UPLIGHT.out).setY(center.y);
       const floor = hit(p, new THREE.Vector3(0, -1, 0)) ?? p.setY(cb.min.y);
