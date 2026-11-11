@@ -200,6 +200,11 @@ export async function addMovie(level, world) {
     const along = b.clone().sub(a);
     const length = along.length();
     along.normalize();
+    // From here on `out` is square to the strip (so to the wall it runs beside), not to the
+    // screen: the light is turned to face the same way all along the wall, or its edge cuts
+    // a slanting line across the wall where the walls close in.
+    const square = new THREE.Vector3(along.z, 0, -along.x).normalize();
+    out.copy(square.dot(out) < 0 ? square.negate() : square);
     const normal = new THREE.Vector3().crossVectors(along, out).normalize();
     if (normal.y < 0) normal.negate();
     const strip = new THREE.Mesh(new THREE.BoxGeometry(length, STRIP.height, STRIP.width), stripMaterial);
