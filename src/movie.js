@@ -84,28 +84,65 @@ export async function addMovie(level, world) {
   const right = new THREE.Vector3().crossVectors(up, front);
   const width = Math.abs(size.dot(right));
   const height = size.y;
-  // How far in you are: 0 at the cinema's back wall, 1 at the screen (along the floor). The
-  // back wall is the first thing straight out from near the top of the screen (above the
-  // doorways into the cinema), or else the level's entrance.
+  // How far in you are: 0 at the cinema's back wall, 1 at the screen (along the floor).
   const inward = front.clone().negate();
   const solid = [];
   root.traverse((o) => o.isMesh && o !== screen && o !== curtain && solid.push(o));
-  // (The ray keeps the vectors it's made with, and is reused below: copies.)
-  const ray = new THREE.Raycaster(center.clone().setY(box.max.y).addScaledVector(front, BACK_RAY), front.clone());
-  const back = ray.intersectObjects(solid, false)[0]?.point ?? entrance;
+  // (The ray keeps the vectors it's made with: copies.)
+  const ray = new THREE.Raycaster();
+  const hitAll = (from, dir, far = Infinity) => {
+    ray.set(from, dir);
+    ray.far = far;
+    return ray.intersectObjects(solid, false);
+  };
+  const hit = (from, dir) => hitAll(from, dir)[0]?.point;
+  const down = new THREE.Vector3(0, -1, 0);
+  // The back wall: walk out from the screen in STEPs, keeping HIGH of the way from the floor
+  // to the ceiling (both slope with the rake; that high, above the doorways into the
+  // cinema), until a wall (not the floor or ceiling) is in the way. `path` keeps the height
+  // at each step, for midAt() below. Or else the level's entrance.
+  const STEP = 0.5;
+  const HIGH = 0.85;
+  const path = [];
+  let back = null;
+  const walker = center.clone().addScaledVector(front, BACK_RAY);
+  const normal = new THREE.Vector3();
+  for (let i = 0; i < 2000 && !back; i++) {
+    const floorY = hit(walker, down)?.y;
+    const ceilY = hit(walker, up)?.y;
+    if (floorY === undefined || ceilY === undefined) break;
+    walker.y = THREE.MathUtils.lerp(floorY, ceilY, HIGH);
+    path.push([walker.dot(inward), THREE.MathUtils.lerp(floorY, ceilY, 0.5)]);
+    const wall = hitAll(walker, front, STEP).find((h) => Math.abs(normal.copy(h.face.normal).transformDirection(h.object.matrixWorld).y) < 0.5);
+    if (wall) back = wall.point;
+    else walker.addScaledVector(front, STEP);
+  }
+  back ??= entrance;
   const start = back.dot(inward);
   const depth = center.dot(inward) - start;
+  // Halfway up the room, `along` (as a dot with `inward`) of the way in.
+  const midAt = (along) => {
+    if (!path.length) return center.y;
+    // `path` runs from the screen outwards: `along` falling.
+    const i = path.findIndex(([a]) => a <= along);
+    if (i <= 0) return path[i === 0 ? 0 : path.length - 1][1];
+    const [a0, y0] = path[i - 1];
+    const [a1, y1] = path[i];
+    return THREE.MathUtils.lerp(y0, y1, (a0 - along) / (a0 - a1));
+  };
 
   // The cinema: back wall to screen, side wall to side wall (straight out from the middle of
   // the screen, at its foot), floor to ceiling.
-  const hit = (from, dir) => {
-    ray.set(from, dir);
-    return ray.intersectObjects(solid, false)[0]?.point;
-  };
   const foot = center.clone().setY(box.min.y + 0.5).addScaledVector(front, BACK_RAY);
   const sides = [right, right.clone().negate()].map((d) => hit(foot, d) ?? foot.clone().addScaledVector(d, width / 2));
   const ceiling = hit(foot, up)?.y ?? box.max.y;
-  const room = new THREE.Box3().setFromPoints([...sides, back, center]).expandByPoint(center.clone().setY(ceiling));
+  // The seats' side walls, halfway from the back wall to the screen (the room can be wider
+  // around the stage): the floor strips run along these.
+  const seats = center.clone().addScaledVector(inward, start + depth / 2 - center.dot(inward));
+  seats.y = midAt(seats.dot(inward));
+  const seatSides = [right, right.clone().negate()].map((d) => hit(seats, d) ?? sides[d === right ? 0 : 1]);
+  const room = new THREE.Box3().setFromPoints([...sides, ...seatSides, back, center]).expandByPoint(center.clone().setY(ceiling));
+  room.min.y = Math.min(room.min.y, box.min.y - 1); // down to the stage, below the screen's foot
   applyShadeZones(root, [room], DARK);
 
   const canvas = document.createElement('canvas');
@@ -147,12 +184,16 @@ export async function addMovie(level, world) {
   const stage = root.getObjectByName('Stage');
   const stageBox = stage && new THREE.Box3().setFromObject(stage);
   const floorEnd = stage ? Math.min(stageBox.min.dot(inward), stageBox.max.dot(inward)) : center.dot(inward) - size.dot(front) / 2;
-  for (const side of sides) {
+  for (const side of seatSides) {
     const across = side.clone().sub(center).projectOnVector(right);
     const out = across.clone().normalize(); // towards this side's wall
+    // SIDE_INSET in from this side's wall `along` the way in (the walls needn't be square to
+    // the screen: they can close in towards the back), on the floor.
     const floorAt = (along) => {
-      const p = side.clone().addScaledVector(out, -SIDE_INSET).addScaledVector(inward, along - side.dot(inward)).setY(ceiling - 0.1);
-      return hit(p, new THREE.Vector3(0, -1, 0)) ?? p.setY(box.min.y);
+      const middle = center.clone().addScaledVector(inward, along - center.dot(inward)).setY(midAt(along));
+      const wall = hit(middle, out) ?? side.clone().addScaledVector(inward, along - side.dot(inward)).setY(middle.y);
+      const p = wall.addScaledVector(out, -SIDE_INSET);
+      return hit(p, down) ?? p.setY(box.min.y);
     };
     const a = floorAt(start + SIDE_INSET);
     const b = floorAt(floorEnd - SIDE_INSET);
