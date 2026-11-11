@@ -44,7 +44,7 @@ const STRIP_LIGHT = { height: 0.25, intensity: 6, tilt: 0.35 }; // its area ligh
 // The lamps on the floor shining up the closed curtains: `out` m in front of them, evenly
 // spaced across the pair of them (half a gap in from each end), aimed `aim` of the way up.
 // They graze the curtains: the closer in, the lower down the light starts.
-const UPLIGHT = { count: 8, out: 0.12, aim: 0.85, intensity: 20, decay: 1, angle: 0.4, penumbra: 0.6, color: 0xffc27a };
+const UPLIGHT = { count: 8, out: 0.12, below: 0.45, aim: 0.85, intensity: 20, decay: 1, angle: 0.4, penumbra: 0.6, color: 0xffc27a };
 const LAMP = { radius: 0.07, height: 0.1 }; // m; the lamp itself, a can with a glowing lens on top
 // The curtains are velvet: their colour from the .blend, a little deeper (BODY of it), with
 // a sheen of it (lighter, see velvet()) that glows where the light grazes the pile, and a
@@ -116,7 +116,7 @@ export async function addMovie(level, world) {
   texture.anisotropy = 8;
   const text = new THREE.Mesh(
     new THREE.PlaneGeometry(width, height),
-    new THREE.MeshBasicMaterial({ color: 0x000000, map: texture, transparent: true, depthWrite: false }),
+    new THREE.MeshBasicMaterial({ color: 0x000000, map: texture, transparent: true, depthWrite: false, ...inFront(2) }),
   );
   text.matrix.makeBasis(right, up, front).setPosition(center.clone().addScaledVector(front, size.dot(front) / 2 + OFFSET));
   text.matrixAutoUpdate = false;
@@ -134,7 +134,7 @@ export async function addMovie(level, world) {
 
   // The floor strips: down the rake, from the back wall to the stage (or screen's wall), each with an
   // area light along it shining down and in across the floor.
-  const halo = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ color: HALO }));
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ color: HALO, ...inFront(1) }));
   halo.matrix.makeBasis(right, up, front).setPosition(center.clone().addScaledVector(front, size.dot(front) / 2 + OFFSET / 2));
   halo.matrixAutoUpdate = false;
   halo.layers.set(1); // the bloom's only
@@ -204,9 +204,13 @@ export async function addMovie(level, world) {
       group.add(can, lens);
       glows.push(lens);
 
-      const spot = new THREE.SpotLight(UPLIGHT.color, UPLIGHT.intensity, cb.max.y - floor.y, UPLIGHT.angle, UPLIGHT.penumbra, UPLIGHT.decay);
-      spot.position.copy(floor).setY(floor.y + LAMP.height + 0.01);
-      spot.target.position.copy(onFace).setY(THREE.MathUtils.lerp(floor.y, cb.max.y, UPLIGHT.aim));
+      // The light itself shines from `below` m under the curtains' foot, wherever the lamp
+      // stands (no shadows, so the stage doesn't get in the way): the light starts low on the
+      // curtains however high the stage is.
+      const source = Math.min(floor.y + LAMP.height + 0.01, cb.min.y - UPLIGHT.below);
+      const spot = new THREE.SpotLight(UPLIGHT.color, UPLIGHT.intensity, cb.max.y - source, UPLIGHT.angle, UPLIGHT.penumbra, UPLIGHT.decay);
+      spot.position.copy(floor).setY(source);
+      spot.target.position.copy(onFace).setY(THREE.MathUtils.lerp(source, cb.max.y, UPLIGHT.aim));
       spot.userData.intensity = UPLIGHT.intensity;
       group.add(spot, spot.target);
       lights.push(spot);
@@ -330,6 +334,13 @@ export async function addMovie(level, world) {
       if (i === frames) state = 'over';
     },
   };
+}
+
+// The text and the halo lie a hair in front of the screen, but from the seats (40–90 m off)
+// the depth buffer can't tell a centimetre apart, so they flickered in and out as you moved:
+// pulled towards the camera in the depth test instead, `step` notches each.
+function inFront(step) {
+  return { polygonOffset: true, polygonOffsetFactor: -step, polygonOffsetUnits: -4 * step };
 }
 
 function velvet(from) {
