@@ -154,9 +154,11 @@ export async function addSentenceScreens(level, listener, world) {
 
 // Word-wrapped and centred, as big as fits (up to MAX_EM of the height). Also the movie's
 // (see movie.js).
-export function draw(canvas, sentence) {
+// Draws into the strip `x` px across and `width` px wide (by default the whole canvas),
+// clearing only that strip.
+export function draw(canvas, sentence, x = 0, width = canvas.width) {
   const ctx = canvas.getContext('2d');
-  const w = canvas.width * (1 - MARGIN * 2);
+  const w = width * (1 - MARGIN * 2);
   const h = canvas.height * (1 - MARGIN * 2);
   let size = canvas.height * MAX_EM;
   let lines;
@@ -167,12 +169,12 @@ export function draw(canvas, sentence) {
     if ((lines.length * size * LINE <= h && wide <= w) || size < 4) break;
     size *= 0.93;
   }
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(x, 0, width, canvas.height);
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const top = canvas.height / 2 - ((lines.length - 1) * size * LINE) / 2;
-  lines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, top + i * size * LINE));
+  lines.forEach((l, i) => ctx.fillText(l, x + width / 2, top + i * size * LINE));
 }
 
 function wrap(ctx, sentence, maxWidth) {

@@ -29,6 +29,8 @@ const BACK_RAY = 3; // m out from the screen the search for the back wall starts
 // and no sliver shows between their folds. Open, they're as they are in the .blend.
 const OVERLAP = 0.4;
 const CANVAS_W = 2048;
+const COLUMNS = 3; // the screen is split into this many columns, a sentence in each
+const DIVIDER = 0.003; // of the screen's width, the line between two columns
 const OFFSET = 0.01; // m the text floats off the screen
 const GLOW = 0.7; // the screen's area light at full (it fades with the curtains)
 const GLOW_COLOR = 0xdfe8ff;
@@ -63,7 +65,10 @@ export async function addMovie(level, world) {
   // Before the shade zones, which patch it like the rest (and before it's mirrored, below).
   if (curtain?.isMesh) curtain.material = velvet(curtain.material);
   const sentences = shuffle([...(await loadSentences())]);
-  const interval = RUNTIME / sentences.length;
+  // The screen is split into COLUMNS, each showing the next sentence along: a frame is
+  // COLUMNS sentences, so every one still shows once over the RUNTIME.
+  const frames = Math.ceil(sentences.length / COLUMNS);
+  const interval = RUNTIME / frames;
   RectAreaLightUniformsLib.init();
 
   // Axes as in screens.js: `front` out of the screen (its thin horizontal axis, towards the
@@ -275,9 +280,20 @@ export async function addMovie(level, world) {
   let cue = 0; // s into 'dimming' or 'opening'
   let time = 0;
   let shown = -1;
-  const show = (i) => {
-    if (i < sentences.length) draw(canvas, sentences[i]);
-    else canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  const show = (frame) => {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (frame < frames) {
+      const column = canvas.width / COLUMNS;
+      for (let c = 0; c < COLUMNS; c++) {
+        const s = sentences[frame * COLUMNS + c];
+        if (s) draw(canvas, s, c * column, column);
+      }
+      // The lines between the columns.
+      ctx.fillStyle = '#fff';
+      const line = canvas.width * DIVIDER;
+      for (let c = 1; c < COLUMNS; c++) ctx.fillRect(c * column - line / 2, 0, line, canvas.height);
+    }
     texture.needsUpdate = true;
   };
 
@@ -309,9 +325,9 @@ export async function addMovie(level, world) {
       }
       if (state !== 'playing') return;
       time += dt;
-      const i = Math.min(Math.floor(time / interval), sentences.length);
+      const i = Math.min(Math.floor(time / interval), frames);
       if (i !== shown) show((shown = i));
-      if (i === sentences.length) state = 'over';
+      if (i === frames) state = 'over';
     },
   };
 }
